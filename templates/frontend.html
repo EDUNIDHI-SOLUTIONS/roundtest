@@ -1,4 +1,4 @@
-﻿
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -896,8 +896,8 @@
       refreshLiveTests();
     }
     function resetBuilder(){
-      buildQuestionCards('single-container',5,'single');
-      buildQuestionCards('multi-container',3,'multi');
+      buildQuestionCards('single-container',10,'single');
+      buildQuestionCards('multi-container',5,'multi');
       document.getElementById('test-title').value='';
     }
 
@@ -938,7 +938,9 @@
       if(!title) return showToast('Title required','warning');
       const single = collectCards('single-container', false);
       const multi = collectCards('multi-container', true);
-      if(!single.length||!multi.length) return showToast('Questions incomplete','warning');
+      if(single.length!==10 || multi.length!==5){
+        return showToast('Need exactly 10 single and 5 multi questions','warning');
+      }
       await api('/teacher/test/create',{method:'POST',body:JSON.stringify({title,single_correct:single,multi_correct:multi})});
       showToast('Test created','success');
       closeModal('teacherBuilderModal');
@@ -1260,3 +1262,4 @@
   </script>
 </body>
 </html>
+

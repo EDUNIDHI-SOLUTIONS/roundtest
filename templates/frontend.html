@@ -114,6 +114,7 @@
             <button class="btn btn-accent" onclick="openModal('schoolsModal')">Manage School</button>
             <button class="btn btn-outline-primary" onclick="openModal('studentsModal')">Manage Students</button>
             <button class="btn btn-outline-primary" onclick="openModal('teachersModal')">Manage Teachers</button>
+            <button class="btn btn-outline-primary" onclick="openModal('subjectsModal');renderSubjectsList();">Manage Subjects</button>
             <button class="btn btn-outline-primary" onclick="prepPublish()">Make Live</button>
           </div>
         </div>
@@ -124,6 +125,22 @@
               <div class="subtle">Add / Edit / Delete schools, classes, sections</div>
             </div>
             <button class="btn btn-accent" onclick="openModal('schoolsModal')">Open Manager</button>
+          </div>
+        </div>
+        <div class="glass-card mb-3">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-6">
+              <label class="form-label">Show tests by teacher</label>
+              <select id="admin-tests-teacher" class="form-select">
+                <option value="">Select teacher</option>
+              </select>
+            </div>
+            <div class="col-md-3 d-grid">
+              <button class="btn btn-outline-primary" onclick="loadAdminTests(document.getElementById('admin-tests-teacher').value)">Load Tests</button>
+            </div>
+            <div class="col-md-3">
+              <div class="subtle">Tests load only after you pick a teacher.</div>
+            </div>
           </div>
         </div>
         <div class="grid-3" id="admin-tests-list"></div>
@@ -252,19 +269,39 @@
           <label class="form-label">Select School</label>
           <select class="form-select" id="school-select" onchange="renderClassSectionControls()"></select>
         </div>
-        <div class="col-md-6 d-flex align-items-end">
-          <input class="form-control me-2" id="class-name" placeholder="Class name" />
-          <button class="btn btn-outline-primary" onclick="addClass()">Add Class</button>
+        <div class="col-md-3 d-flex align-items-end gap-2">
+          <input class="form-control" id="class-name" placeholder="Class name" />
+          <button class="btn btn-outline-primary" onclick="addClass()">Add</button>
+        </div>
+        <div class="col-md-3 d-grid">
+          <button class="btn btn-outline-secondary mb-1" onclick="editClass()">Edit Selected Class</button>
+          <button class="btn btn-outline-danger" onclick="deleteClass()">Delete Selected Class</button>
         </div>
       </div>
       <div class="row g-2 mb-3">
-        <div class="col-md-6">
+        <div class="col-md-4">
           <label class="form-label">Select Class</label>
-          <select class="form-select" id="class-select"></select>
+          <select class="form-select" id="class-select" onchange="renderSectionSelect()"></select>
         </div>
-        <div class="col-md-6 d-flex align-items-end">
-          <input class="form-control me-2" id="section-name" placeholder="Section name" />
-          <button class="btn btn-outline-primary" onclick="addSection()">Add Section</button>
+        <div class="col-md-3">
+          <label class="form-label">Select Section</label>
+          <select class="form-select" id="section-select"></select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <input class="form-control" id="section-name" placeholder="New section" />
+        </div>
+        <div class="col-md-3 d-grid">
+          <button class="btn btn-outline-primary mb-1" onclick="addSection()">Add Section</button>
+          <button class="btn btn-outline-secondary mb-1" onclick="editSection()">Edit Selected</button>
+          <button class="btn btn-outline-danger" onclick="deleteSection()">Delete Selected</button>
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-6 d-grid">
+          <button class="btn btn-outline-secondary" onclick="editSchool()">Edit Selected School</button>
+        </div>
+        <div class="col-md-6 d-grid">
+          <button class="btn btn-outline-danger" onclick="deleteSchool()">Delete Selected School</button>
         </div>
       </div>
       <div id="school-tree"></div>
@@ -278,6 +315,26 @@
         <div class="d-flex gap-2">
           <button class="btn btn-outline-secondary btn-sm" onclick="downloadStudentSample()">Download sample</button>
           <button class="btn btn-outline-secondary btn-sm" onclick="closeModal('studentsModal')">Close</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="selectAllStudents(true)">Select All</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="selectAllStudents(false)">Clear</button>
+          <button class="btn btn-outline-danger btn-sm" onclick="deleteSelectedStudents()">Delete Selected</button>
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">Search name</label>
+          <input class="form-control" id="stu-search-name" placeholder="Type name..." oninput="renderStudents()" />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Search class</label>
+          <input class="form-control" id="stu-search-class" placeholder="Class (e.g., 7)" oninput="renderStudents()" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Search section</label>
+          <input class="form-control" id="stu-search-section" placeholder="Section (e.g., A)" oninput="renderStudents()" />
+        </div>
+        <div class="col-md-1 d-grid">
+          <button class="btn btn-outline-secondary mt-4" onclick="clearStudentSearch()">Clear</button>
         </div>
       </div>
       <div class="row g-2 mb-3">
@@ -306,6 +363,42 @@
       <div id="students-list"></div>
     </div>
   </div>
+
+  <div class="modal-sheet" id="editStudentModal">
+    <div class="modal-body-card">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Edit Student</h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="closeModal('editStudentModal')">Close</button>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Name</label>
+          <input class="form-control" id="edit-stu-name" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Mobile</label>
+          <input class="form-control" id="edit-stu-mobile" />
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-4">
+          <label class="form-label">School</label>
+          <select class="form-select" id="edit-stu-school" onchange="handleSchoolChange('edit-stu')"></select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Class</label>
+          <select class="form-select" id="edit-stu-class" onchange="handleClassChange('edit-stu')"></select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Section</label>
+          <select class="form-select" id="edit-stu-section"></select>
+        </div>
+      </div>
+      <div class="d-grid">
+        <button class="btn btn-accent" onclick="saveStudentEdit()">Save</button>
+      </div>
+    </div>
+  </div>
   <div class="modal-sheet" id="teachersModal">
     <div class="modal-body-card">
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -318,6 +411,20 @@
         <div class="col-md-3 d-grid"><button class="btn btn-accent" onclick="addTeacher()">Add</button></div>
       </div>
       <div id="teachers-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-sheet" id="subjectsModal">
+    <div class="modal-body-card">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Manage Subjects</h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="closeModal('subjectsModal')">Close</button>
+      </div>
+      <div class="d-flex gap-2 mb-3">
+        <input class="form-control" id="subject-name" placeholder="Subject name" />
+        <button class="btn btn-accent" onclick="addSubject()">Add</button>
+      </div>
+      <div id="subjects-list"></div>
     </div>
   </div>
 
@@ -363,6 +470,10 @@
         <label class="form-label">Test title</label>
         <input class="form-control" id="test-title" placeholder="Enter a title" />
       </div>
+      <div class="mb-3">
+        <label class="form-label">Subject</label>
+        <select class="form-select" id="test-subject"></select>
+      </div>
       <div class="section-title mt-2">Single correct</div>
       <div id="single-container"></div>
       <div class="section-title mt-3">Multi correct</div>
@@ -380,6 +491,10 @@
       <div class="mb-3">
         <label class="form-label">Test title</label>
         <input class="form-control" id="edit-test-title" />
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Subject</label>
+        <select class="form-select" id="edit-test-subject"></select>
       </div>
       <div class="section-title mt-2">Single correct</div>
       <div id="edit-single-container"></div>
@@ -416,7 +531,17 @@
     </div>
   </div>
   <script>
-    const state = { role: null, schools: [], classMap: {}, sectionMap: {}, exam: null, leaderboardType:'class' };
+    const state = { role: null, schools: [], classMap: {}, sectionMap: {}, exam: null, leaderboardType:'class', teachers: [], subjects: [] };
+
+    function setSubjectOptions(selectId, value="General"){
+      const el=document.getElementById(selectId);
+      if(!el) return;
+      const names = [...(state.subjects||[])];
+      if(value && !names.includes(value)) names.push(value);
+      if(!names.length) names.push("General");
+      el.innerHTML = names.map(s=>`<option value="${s}">${s}</option>`).join('');
+      el.value = value || names[0];
+    }
 
     const toastStack = document.getElementById('toast-stack');
     function showToast(msg, type='info') {
@@ -427,10 +552,80 @@
       setTimeout(() => el.remove(), 3000);
     }
 
+    function formatIST(iso){
+      if(!iso) return '';
+      try{
+        return new Date(iso).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+      }catch(e){
+        return '';
+      }
+    }
+
     async function api(url, options={}) {
       const res = await fetch(url, { credentials:'include', headers:{ 'Content-Type':'application/json', ...(options.headers||{}) }, ...options });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
       return res.json();
+    }
+
+    async function loadSubjects(){
+      try{
+        const data = await api('/subjects');
+        state.subjectObjs = data.subjects || [];
+        state.subjects = (data.subjects||[]).map(s=>s.name);
+      }catch(e){
+        state.subjects = ["General"];
+      }
+      setSubjectOptions('test-subject');
+      setSubjectOptions('edit-test-subject');
+    }
+
+    function renderSubjectsList(){
+      const wrap=document.getElementById('subjects-list');
+      if(!wrap) return;
+      wrap.innerHTML='';
+      (state.subjectObjs||[]).forEach(sub=>{
+        const safeName = encodeURIComponent(sub.name||'');
+        const el=document.createElement('div');
+        el.className='list-card d-flex justify-content-between align-items-center';
+        el.innerHTML=`<div class="fw-semibold">${sub.name}</div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" onclick="editSubject('${sub.id}','${safeName}')">Edit</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteSubject('${sub.id}')">Delete</button>
+        </div>`;
+        wrap.appendChild(el);
+      });
+      if(!state.subjectObjs || !state.subjectObjs.length){
+        wrap.innerHTML='<div class="subtle">No subjects yet. Add one.</div>';
+      }
+    }
+
+    async function addSubject(){
+      const name=document.getElementById('subject-name').value.trim();
+      if(!name) return showToast('Enter subject','warning');
+      await api('/admin/subject/add',{method:'POST',body:JSON.stringify({name})});
+      showToast('Subject added','success');
+      document.getElementById('subject-name').value='';
+      await loadSubjects();
+      renderSubjectsList();
+      setSubjectOptions('test-subject');
+    }
+
+    async function editSubject(id,name){
+      const current = decodeURIComponent(name||'');
+      const newName = prompt('Edit subject name', current);
+      if(!newName) return;
+      await api('/admin/subject/edit',{method:'POST',body:JSON.stringify({id,name:newName})});
+      showToast('Subject updated','success');
+      await loadSubjects();
+      renderSubjectsList();
+    }
+
+    async function deleteSubject(id){
+      if(!confirm('Delete this subject?')) return;
+      await api('/admin/subject/delete',{method:'POST',body:JSON.stringify({id})});
+      showToast('Subject deleted','warning');
+      await loadSubjects();
+      renderSubjectsList();
     }
 
     function openModal(id){
@@ -498,7 +693,7 @@
       document.getElementById('teacher-area').classList.toggle('section-hidden', role!=='teacher');
       document.getElementById('student-area').classList.toggle('section-hidden', role!=='student');
       if (role === 'admin') loadAdmin();
-      if (role === 'teacher') loadTeacherTests();
+      if (role === 'teacher') { loadSubjects().then(()=>resetBuilder()); loadTeacherTests(); }
       if (role === 'student') loadStudent();
     }
 
@@ -513,7 +708,9 @@
     };
 
     async function loadAdmin() {
-      await Promise.all([loadSchoolTree(), loadAdminTests(), loadTeachers(), loadStudents(), refreshLiveTests()]).catch(err => showToast(err.message,'danger'));
+      await Promise.all([loadSchoolTree(), loadSubjects(), loadTeachers(), loadStudents(), refreshLiveTests()]).catch(err => showToast(err.message,'danger'));
+      const grid=document.getElementById('admin-tests-list');
+      if(grid) grid.innerHTML='<div class="subtle">Choose a teacher to load tests.</div>';
       loadReports('admin-leaderboard','admin-');
       populatePublishSelects();
     }
@@ -522,10 +719,7 @@
       if(!state.schools.length){
         try { await loadSchoolTree(); } catch(e){}
       }
-      if(!state.adminTests || !state.adminTests.length){
-        try { await loadAdminTests(); } catch(e){}
-      }
-      populatePublishSelects();
+      try { await fetchTestsForPublish(); } catch(e){}
       openModal('publishModal');
     }
 
@@ -566,11 +760,24 @@
       const schoolSelect = document.getElementById('school-select');
       if(!schoolSelect || !schoolSelect.value){
         populateSelect('class-select', []);
+        populateSelect('section-select', []);
         return;
       }
       const schoolId = schoolSelect.value;
       const school = state.schools.find(s=>s.id===schoolId);
       populateSelect('class-select', (school?.classes||[]).map(c=>({id:c.id,name:c.name})));
+      renderSectionSelect();
+    }
+
+    function renderSectionSelect(){
+      const classSel=document.getElementById('class-select');
+      if(!classSel||!classSel.value){
+        populateSelect('section-select', []);
+        return;
+      }
+      const classId=classSel.value;
+      const cls=state.schools.flatMap(s=>s.classes||[]).find(c=>c.id===classId);
+      populateSelect('section-select',(cls?.sections||[]).map(s=>({id:s.id,name:s.name})));
     }
 
     function populateReportFilters(){
@@ -624,6 +831,23 @@
       document.getElementById('school-name').value='';
       loadSchoolTree();
     }
+    async function editSchool(){
+      const sel=document.getElementById('school-select').value;
+      if(!sel) return showToast('Select school','warning');
+      const newName=prompt('Edit school name');
+      if(!newName) return;
+      await api('/admin/school/edit',{method:'POST',body:JSON.stringify({id:sel,name:newName})});
+      showToast('School updated','success');
+      loadSchoolTree();
+    }
+    async function deleteSchool(){
+      const sel=document.getElementById('school-select').value;
+      if(!sel) return showToast('Select school','warning');
+      if(!confirm('Delete this school and its classes/sections?')) return;
+      await api('/admin/school/delete',{method:'POST',body:JSON.stringify({id:sel})});
+      showToast('School deleted','warning');
+      loadSchoolTree();
+    }
 
     async function addClass(){
       const schoolId=document.getElementById('school-select').value;
@@ -632,6 +856,25 @@
       await api('/admin/class/add',{method:'POST',body:JSON.stringify({school_id:schoolId,name})});
       showToast('Class added','success');
       document.getElementById('class-name').value='';
+      loadSchoolTree();
+    }
+
+    async function editClass(){
+      const classId=document.getElementById('class-select').value;
+      if(!classId) return showToast('Select class to edit','warning');
+      const newName=prompt('Edit class name');
+      if(!newName) return;
+      await api('/admin/class/edit',{method:'POST',body:JSON.stringify({id:classId,name:newName})});
+      showToast('Class updated','success');
+      loadSchoolTree();
+    }
+
+    async function deleteClass(){
+      const classId=document.getElementById('class-select').value;
+      if(!classId) return showToast('Select class to delete','warning');
+      if(!confirm('Delete this class and its sections?')) return;
+      await api('/admin/class/delete',{method:'POST',body:JSON.stringify({id:classId})});
+      showToast('Class deleted','warning');
       loadSchoolTree();
     }
 
@@ -645,30 +888,91 @@
       loadSchoolTree();
     }
 
+    async function editSection(){
+      const secId=document.getElementById('section-select').value;
+      if(!secId) return showToast('Select section to edit','warning');
+      const newName=prompt('Edit section name');
+      if(!newName) return;
+      await api('/admin/section/edit',{method:'POST',body:JSON.stringify({id:secId,name:newName})});
+      showToast('Section updated','success');
+      loadSchoolTree();
+    }
+
+    async function deleteSection(){
+      const secId=document.getElementById('section-select').value;
+      if(!secId) return showToast('Select section to delete','warning');
+      if(!confirm('Delete this section?')) return;
+      await api('/admin/section/delete',{method:'POST',body:JSON.stringify({id:secId})});
+      showToast('Section deleted','warning');
+      loadSchoolTree();
+    }
+
     async function loadStudents(){
       const data = await api('/admin/students');
+      state.students = data.students || [];
+      renderStudents();
+    }
+
+    function renderStudents(){
+      const nameFilter = (document.getElementById('stu-search-name')?.value || '').toLowerCase();
+      const classFilter = (document.getElementById('stu-search-class')?.value || '').toLowerCase();
+      const sectionFilter = (document.getElementById('stu-search-section')?.value || '').toLowerCase();
       const wrap = document.getElementById('students-list');
+      if(!wrap) return;
       wrap.innerHTML = '';
-      (data.students||[]).forEach(s=>{
-        const el = document.createElement('div');
-        el.className='list-card';
-        const archived = s.archived ? '<span class="badge bg-warning text-dark ms-2">Archived</span>' : '';
-        el.innerHTML = `<div class="fw-semibold">${s.name} <span class="subtle">${s.mobile}</span>${archived}</div><div class="subtle">${s.school} • ${s.class} ${s.section}</div><div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-primary" onclick="editStudent('${s.id}','${s.name}','${s.mobile}')">Edit</button><button class="btn btn-sm btn-outline-${s.archived?'success':'danger'}" onclick="archiveStudent('${s.id}',${!s.archived})">${s.archived?'Unarchive':'Archive'}</button></div>`;
-        wrap.appendChild(el);
+      (state.students||[])
+        .filter(s=>{
+          const matchesName = !nameFilter || (s.name||'').toLowerCase().includes(nameFilter);
+          const matchesClass = !classFilter || (s.class||'').toLowerCase().includes(classFilter);
+          const matchesSection = !sectionFilter || (s.section||'').toLowerCase().includes(sectionFilter);
+          return matchesName && matchesClass && matchesSection;
+        })
+        .forEach(s=>{
+          const el = document.createElement('div');
+          el.className='list-card';
+          el.innerHTML = `<div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold">${s.name} <span class="subtle">${s.mobile}</span></div>
+                <div class="subtle">${s.school} • ${s.class} ${s.section}</div>
+              </div>
+              <input type="checkbox" class="form-check-input student-select" data-id="${s.id}">
+            </div>
+            <div class="d-flex gap-2 mt-2">
+              <button class="btn btn-sm btn-outline-primary" onclick="openStudentEdit('${s.id}')">Edit</button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteStudent('${s.id}')">Delete</button>
+            </div>`;
+          wrap.appendChild(el);
+        });
+      if(!wrap.innerHTML){
+        wrap.innerHTML='<div class="subtle">No students match your search.</div>';
+      }
+    }
+
+    function clearStudentSearch(){
+      ['stu-search-name','stu-search-class','stu-search-section'].forEach(id=>{
+        const el=document.getElementById(id); if(el) el.value='';
       });
+      renderStudents();
     }
 
     async function loadTeachers(){
       const data = await api('/admin/teachers');
+      state.teachers = data.teachers || [];
       const wrap = document.getElementById('teachers-list');
       wrap.innerHTML='';
       (data.teachers||[]).forEach(t=>{
         const el=document.createElement('div');
         el.className='list-card';
-        const archived = t.archived ? '<span class="badge bg-warning text-dark ms-2">Archived</span>' : '';
-        el.innerHTML=`<div class="fw-semibold">${t.name}${archived}</div><div class="subtle">${t.mobile}</div><div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-primary" onclick="editTeacher('${t.id}','${t.name}','${t.mobile}')">Edit</button><button class="btn btn-sm btn-outline-${t.archived?'success':'danger'}" onclick="archiveTeacher('${t.id}',${!t.archived})">${t.archived?'Unarchive':'Archive'}</button></div>`;
+        el.innerHTML=`<div class="fw-semibold">${t.name}</div><div class="subtle">${t.mobile}</div><div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-primary" onclick="editTeacher('${t.id}','${t.name}','${t.mobile}')">Edit</button><button class="btn btn-sm btn-outline-danger" onclick="deleteTeacher('${t.id}')">Delete</button></div>`;
         wrap.appendChild(el);
       });
+      populateTeacherFilter();
+    }
+
+    function populateTeacherFilter(){
+      const sel=document.getElementById('admin-tests-teacher');
+      if(!sel) return;
+      sel.innerHTML='<option value=\"\">Select teacher</option>'+(state.teachers||[]).map(t=>`<option value=\"${t.id}\">${t.name}</option>`).join('');
     }
 
     async function addStudent(){
@@ -710,11 +1014,57 @@
       showToast('Student updated','success');
       loadStudents();
     }
+    function openStudentEdit(id){
+      const stu = (state.students||[]).find(s=>s.id===id);
+      if(!stu){ showToast('Student not found','warning'); return; }
+      state.editStudentId = id;
+      document.getElementById('edit-stu-name').value = stu.name || '';
+      document.getElementById('edit-stu-mobile').value = stu.mobile || '';
+      populateSelect('edit-stu-school', (state.schools||[]).map(s=>({id:s.id,name:s.name})));
+      document.getElementById('edit-stu-school').value = stu.school_id || (state.schools[0]?.id||'');
+      handleSchoolChange('edit-stu');
+      document.getElementById('edit-stu-class').value = stu.class_id || document.getElementById('edit-stu-class').value;
+      handleClassChange('edit-stu');
+      document.getElementById('edit-stu-section').value = stu.section_id || document.getElementById('edit-stu-section').value;
+      openModal('editStudentModal');
+    }
 
-    async function archiveStudent(id, archived){
-      await api('/admin/student/archive',{method:'POST',body:JSON.stringify({id,archived})});
-      showToast(archived?'Student archived':'Student unarchived','success');
+    async function saveStudentEdit(){
+      const id = state.editStudentId;
+      if(!id) return;
+      const name = document.getElementById('edit-stu-name').value.trim();
+      const mobile = document.getElementById('edit-stu-mobile').value.trim();
+      const school_id = document.getElementById('edit-stu-school').value;
+      const class_id = document.getElementById('edit-stu-class').value;
+      const section_id = document.getElementById('edit-stu-section').value;
+      if(!name || !mobile) return showToast('Name and mobile required','warning');
+      await api('/admin/student/edit',{method:'POST',body:JSON.stringify({id,name,mobile,school_id,class_id,section_id})});
+      showToast('Student updated','success');
+      closeModal('editStudentModal');
       loadStudents();
+    }
+
+    async function deleteStudent(id){
+      if(!confirm('Delete this student?')) return;
+      await api('/admin/student/delete',{method:'POST',body:JSON.stringify({id})});
+      showToast('Student deleted','warning');
+      loadStudents();
+    }
+
+    async function deleteSelectedStudents(){
+      const ids=[...document.querySelectorAll('.student-select:checked')].map(cb=>cb.dataset.id);
+      if(!ids.length) return showToast('Select students to delete','warning');
+      if(!confirm(`Delete ${ids.length} students?`)) return;
+      for(const id of ids){
+        try{ await api('/admin/student/delete',{method:'POST',body:JSON.stringify({id})}); }
+        catch(e){ showToast(`Failed on ${id}: ${e.message}`,'danger'); }
+      }
+      showToast('Selected students deleted','warning');
+      loadStudents();
+    }
+
+    function selectAllStudents(flag=true){
+      document.querySelectorAll('.student-select').forEach(cb=>{ cb.checked = !!flag; });
     }
 
     function downloadStudentSample(){
@@ -746,23 +1096,30 @@
       loadTeachers();
     }
 
-    async function archiveTeacher(id, archived){
-      await api('/admin/teacher/archive',{method:'POST',body:JSON.stringify({id,archived})});
-      showToast(archived?'Teacher archived':'Teacher unarchived','success');
+    async function deleteTeacher(id){
+      if(!confirm('Delete this teacher?')) return;
+      await api('/admin/teacher/delete',{method:'POST',body:JSON.stringify({id})});
+      showToast('Teacher deleted','warning');
       loadTeachers();
     }
 
-    async function loadAdminTests(){
-      const data = await api('/admin/tests');
+    async function loadAdminTests(teacherId=''){
+      const url = teacherId ? `/admin/tests?teacher_id=${teacherId}` : '/admin/tests';
+      const data = await api(url);
       state.adminTests = data.tests || [];
       const wrap = document.getElementById('admin-tests-list');
+      if(!wrap) return;
       wrap.innerHTML='';
       (data.tests||[]).forEach(t=>{
         const card=document.createElement('div');
         card.className='glass-card';
-        card.innerHTML=`<div class="fw-semibold mb-1">${t.title}</div><div class="subtle">${t.teacher_name||''}</div><div class="d-flex gap-2 mt-2"><span class="badge ${t.archived?'bg-warning text-dark':'bg-success'}">${t.archived?'Archived':'Ready'}</span><button class="btn btn-sm btn-outline-primary" onclick="openPublishWith('${t.id}')">Make Live</button><button class="btn btn-sm btn-outline-secondary" onclick="openEditTest('${t.id}')">Edit</button><button class="btn btn-sm btn-outline-${t.archived?'success':'danger'}" onclick="toggleArchiveTest('${t.id}',${!t.archived})">${t.archived?'Unarchive':'Archive'}</button></div>`;
+        const created = formatIST(t.created_at);
+        card.innerHTML=`<div class="fw-semibold mb-1">${t.title}</div><div class="subtle">${t.teacher_name||''}${t.subject?` • ${t.subject}`:''}${created?` • ${created}`:''}</div><div class="d-flex gap-2 mt-2"><span class="badge ${t.archived?'bg-warning text-dark':'bg-success'}">${t.archived?'Archived':'Ready'}</span><button class="btn btn-sm btn-outline-primary" onclick="openPublishWith('${t.id}')">Make Live</button><button class="btn btn-sm btn-outline-secondary" onclick="openEditTest('${t.id}')">Edit</button><button class="btn btn-sm btn-outline-${t.archived?'success':'danger'}" onclick="toggleArchiveTest('${t.id}',${!t.archived})">${t.archived?'Unarchive':'Archive'}</button></div>`;
         wrap.appendChild(card);
       });
+      if((data.tests||[]).length===0){
+        wrap.innerHTML='<div class="subtle">No tests for this teacher yet.</div>';
+      }
       populatePublishSelects(data.tests||[]);
     }
 
@@ -770,6 +1127,7 @@
       const res = await api(`/admin/test/${id}`);
       state.editingTestId = id;
       document.getElementById('edit-test-title').value = res.title || '';
+      setSubjectOptions('edit-test-subject', res.subject || 'General');
       fillEditCards('edit-single-container', res.single_correct || [], 'single');
       fillEditCards('edit-multi-container', res.multi_correct || [], 'multi');
       openModal('adminEditModal');
@@ -799,13 +1157,15 @@
       const id = state.editingTestId;
       if(!id) return;
       const title=document.getElementById('edit-test-title').value.trim();
+      const subject=document.getElementById('edit-test-subject')?.value || 'General';
       const single = collectEditCards('edit-single-container', false);
       const multi = collectEditCards('edit-multi-container', true);
       if(!title) return showToast('Title required','warning');
-      await api('/admin/test/edit',{method:'POST',body:JSON.stringify({test_id:id,title,single_correct:single,multi_correct:multi})});
+      await api('/admin/test/edit',{method:'POST',body:JSON.stringify({test_id:id,title,subject,single_correct:single,multi_correct:multi})});
       showToast('Test updated','success');
       closeModal('adminEditModal');
-      loadAdminTests();
+      const tid=document.getElementById('admin-tests-teacher')?.value||'';
+      loadAdminTests(tid);
     }
 
     function collectEditCards(containerId, multi){
@@ -824,10 +1184,21 @@
     async function toggleArchiveTest(id, archived){
       await api(archived?'/admin/test/archive':'/admin/test/unarchive',{method:'POST',body:JSON.stringify({test_id:id})});
       showToast(archived?'Test archived':'Test unarchived','success');
-      loadAdminTests();
+      const tid=document.getElementById('admin-tests-teacher')?.value||'';
+      loadAdminTests(tid);
     }
 
-    function openPublishWith(testId){ openModal('publishModal'); document.getElementById('pub-test').value=testId; }
+    async function openPublishWith(testId){
+      await fetchTestsForPublish();
+      openModal('publishModal');
+      document.getElementById('pub-test').value=testId;
+    }
+
+    async function fetchTestsForPublish(){
+      const data = await api('/admin/tests');
+      state.adminTests = data.tests || [];
+      populatePublishSelects(state.adminTests);
+    }
 
     function populatePublishSelects(tests){
       const testData = tests || state.adminTests || [];
@@ -896,6 +1267,7 @@
       refreshLiveTests();
     }
     function resetBuilder(){
+      setSubjectOptions('test-subject');
       buildQuestionCards('single-container',10,'single');
       buildQuestionCards('multi-container',5,'multi');
       document.getElementById('test-title').value='';
@@ -935,13 +1307,14 @@
 
     async function saveTest(){
       const title=document.getElementById('test-title').value.trim();
+      const subject=document.getElementById('test-subject')?.value || 'General';
       if(!title) return showToast('Title required','warning');
       const single = collectCards('single-container', false);
       const multi = collectCards('multi-container', true);
       if(single.length!==10 || multi.length!==5){
         return showToast('Need exactly 10 single and 5 multi questions','warning');
       }
-      await api('/teacher/test/create',{method:'POST',body:JSON.stringify({title,single_correct:single,multi_correct:multi})});
+      await api('/teacher/test/create',{method:'POST',body:JSON.stringify({title,subject,single_correct:single,multi_correct:multi})});
       showToast('Test created','success');
       closeModal('teacherBuilderModal');
       loadTeacherTests();

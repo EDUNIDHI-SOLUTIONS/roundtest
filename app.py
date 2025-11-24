@@ -401,11 +401,34 @@ def admin_student_edit():
     sid = data.get("id")
     if not sid:
         return jsonify({"error": "id required"}), 400
-    updates = {k: v for k, v in data.items() if k in ["name", "student_name", "mobile", "class", "section", "school", "school_name"] and v}
-    if "student_name" in updates:
-        updates["name"] = updates.pop("student_name")
-    if "school_name" in updates:
-        updates["school"] = updates.pop("school_name")
+    updates = {}
+    # Basic fields
+    if data.get("name") or data.get("student_name"):
+        updates["name"] = data.get("name") or data.get("student_name")
+    if data.get("mobile"):
+        updates["mobile"] = data.get("mobile")
+
+    # Optional reassignment of school/class/section by IDs
+    school_id = data.get("school_id")
+    class_id = data.get("class_id")
+    section_id = data.get("section_id")
+    if school_id and class_id and section_id:
+        school_doc = db.schools.find_one({"_id": oid(school_id)})
+        class_doc = db.classes.find_one({"_id": oid(class_id), "school_id": school_id})
+        sec_doc = db.sections.find_one({"_id": oid(section_id), "class_id": class_id})
+        if not school_doc or not class_doc or not sec_doc:
+            return jsonify({"error": "Invalid school/class/section"}), 400
+        updates.update(
+            {
+                "school_id": school_id,
+                "class_id": class_id,
+                "section_id": section_id,
+                "school": school_doc.get("name"),
+                "class": class_doc.get("name"),
+                "section": sec_doc.get("name"),
+            }
+        )
+
     if not updates:
         return jsonify({"error": "No updates"}), 400
     db.students.update_one({"_id": oid(sid)}, {"$set": updates})
@@ -482,6 +505,9 @@ def admin_students_list():
                 "class": s.get("class"),
                 "section": s.get("section"),
                 "school": s.get("school"),
+                "school_id": s.get("school_id"),
+                "class_id": s.get("class_id"),
+                "section_id": s.get("section_id"),
                 "archived": s.get("archived", False),
             }
         )
@@ -739,13 +765,74 @@ def teacher_name(tid):
     return t["name"] if t else "Unknown"
 
 
+# -------- Subjects master -------- #
+@app.get("/subjects")
+def list_subjects():
+    ok, resp, code = require_role(["admin", "teacher", "student"])
+    if not ok:
+        return resp, code
+    subjects = []
+    for s in db.subjects.find().sort("name", 1):
+        subjects.append({"id": str(s["_id"]), "name": s.get("name")})
+    if not subjects:
+        subjects = [{"id": "", "name": "General"}]
+    return jsonify({"subjects": subjects})
+
+
+@app.post("/admin/subject/add")
+def admin_subject_add():
+    ok, resp, code = require_role(["admin"])
+    if not ok:
+        return resp, code
+    data = get_json()
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    existing = db.subjects.find_one({"name": name})
+    if existing:
+        return jsonify({"error": "Subject exists"}), 409
+    db.subjects.insert_one({"name": name})
+    return jsonify({"status": "ok"})
+
+
+@app.post("/admin/subject/edit")
+def admin_subject_edit():
+    ok, resp, code = require_role(["admin"])
+    if not ok:
+        return resp, code
+    data = get_json()
+    sid = data.get("id")
+    name = (data.get("name") or "").strip()
+    if not sid or not name:
+        return jsonify({"error": "id and name required"}), 400
+    db.subjects.update_one({"_id": oid(sid)}, {"$set": {"name": name}})
+    return jsonify({"status": "ok"})
+
+
+@app.post("/admin/subject/delete")
+def admin_subject_delete():
+    ok, resp, code = require_role(["admin"])
+    if not ok:
+        return resp, code
+    data = get_json()
+    sid = data.get("id")
+    if not sid:
+        return jsonify({"error": "id required"}), 400
+    db.subjects.delete_one({"_id": oid(sid)})
+    return jsonify({"status": "ok"})
+
+
 @app.get("/admin/tests")
 def admin_tests():
     ok, resp, code = require_role(["admin"])
     if not ok:
         return resp, code
+    teacher_filter = request.args.get("teacher_id")
+    query = {}
+    if teacher_filter:
+        query["teacher_id"] = teacher_filter
     tests = []
-    for t in db.tests_master.find().sort("created_at", -1):
+    for t in db.tests_master.find(query).sort("created_at", -1):
         tests.append(
             {
                 "id": str(t["_id"]),
@@ -753,6 +840,8 @@ def admin_tests():
                 "teacher_id": t.get("teacher_id"),
                 "teacher_name": teacher_name(t.get("teacher_id")),
                 "archived": t.get("archived", False),
+                "subject": t.get("subject", "General"),
+                "created_at": t.get("created_at"),
             }
         )
     return jsonify({"tests": tests})
@@ -954,12 +1043,14 @@ def teacher_test_create():
     title = data.get("title")
     single = data.get("single_correct", [])
     multi = data.get("multi_correct", [])
+    subject = data.get("subject") or "General"
     if not title:
         return jsonify({"error": "Title required"}), 400
     if len(single) != 10 or len(multi) != 5:
         return jsonify({"error": "Need 10 single and 5 multi questions"}), 400
     doc = {
         "title": title,
+        "subject": subject,
         "teacher_id": session.get("user_id"),
         "single_correct": single,
         "multi_correct": multi,
@@ -995,6 +1086,8 @@ def admin_test_edit():
         updates["single_correct"] = data["single_correct"]
     if "multi_correct" in data:
         updates["multi_correct"] = data["multi_correct"]
+    if "subject" in data:
+        updates["subject"] = data.get("subject") or "General"
     if not updates:
         return jsonify({"error": "Nothing to update"}), 400
     db.tests_master.update_one({"_id": oid(test_id)}, {"$set": updates})
@@ -1014,6 +1107,8 @@ def admin_test_details(test_id):
         {
             "id": str(doc["_id"]),
             "title": doc.get("title"),
+            "subject": doc.get("subject", "General"),
+            "created_at": doc.get("created_at"),
             "single_correct": doc.get("single_correct", []),
             "multi_correct": doc.get("multi_correct", []),
             "archived": doc.get("archived", False),

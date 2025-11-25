@@ -21,3 +21,4 @@ echo "Pushing..."
 git push
 
 echo "Sync complete."
+

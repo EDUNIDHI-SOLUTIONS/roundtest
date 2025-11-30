@@ -2,7 +2,7 @@ import csv
 import io
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from bson import ObjectId
 from flask import Flask, jsonify, render_template, request, session
@@ -190,14 +190,42 @@ def now_iso() -> str:
 
 
 def score_submission(test_doc: dict, answers_single: List, answers_multi: List) -> Tuple[int, list, list]:
-    """Score answers and return score plus solution breakdown."""
+    """Score answers and return score plus solution breakdown. Coerces inputs to ints to avoid under-scoring."""
+
+    def clean_single(idx: int, opts: list) -> Optional[int]:
+        if idx >= len(answers_single):
+            return None
+        raw = answers_single[idx]
+        try:
+            val = int(raw)
+        except Exception:
+            return None
+        return val if 0 <= val < len(opts) else None
+
+    def clean_multi(idx: int, opts: list) -> set:
+        if idx >= len(answers_multi):
+            return set()
+        raw_list = answers_multi[idx] or []
+        cleaned = set()
+        for raw in raw_list:
+            try:
+                val = int(raw)
+            except Exception:
+                continue
+            if 0 <= val < len(opts):
+                cleaned.add(val)
+        return cleaned
+
     score = 0
     sol_single = []
     for idx, q in enumerate(test_doc.get("single_correct", [])):
-        submitted = answers_single[idx] if idx < len(answers_single) else None
-        correct = q.get("correct_idx")
         opts = q.get("opts", [])
-        is_ok = submitted is not None and submitted == correct
+        submitted = clean_single(idx, opts)
+        try:
+            correct = int(q.get("correct_idx"))
+        except Exception:
+            correct = None
+        is_ok = submitted is not None and correct is not None and submitted == correct
         if is_ok:
             score += 1
         sol_single.append(
@@ -212,22 +240,34 @@ def score_submission(test_doc: dict, answers_single: List, answers_multi: List) 
 
     sol_multi = []
     for idx, q in enumerate(test_doc.get("multi_correct", [])):
-        submitted = answers_multi[idx] if idx < len(answers_multi) else []
-        submitted_set = set(submitted or [])
-        correct_set = set(q.get("correct_indexes", []))
+        opts = q.get("opts", [])
+        submitted_set = clean_multi(idx, opts)
+        correct_set = set()
+        for raw in q.get("correct_indexes", []):
+            try:
+                val = int(raw)
+            except Exception:
+                continue
+            if 0 <= val < len(opts):
+                correct_set.add(val)
         is_ok = submitted_set == correct_set and len(submitted_set) > 0
         if is_ok:
             score += 2
         sol_multi.append(
             {
                 "q": q.get("q"),
-                "options": q.get("opts", []),
+                "options": opts,
                 "correct": list(correct_set),
                 "submitted": list(submitted_set),
                 "is_correct": is_ok,
             }
         )
     return score, sol_single, sol_multi
+
+
+def max_score(test_doc: dict) -> int:
+    """Return total possible marks (1 per single, 2 per multi)."""
+    return len(test_doc.get("single_correct", [])) + 2 * len(test_doc.get("multi_correct", []))
 
 
 def recalc_scores_for_test(test_id: str) -> None:
@@ -248,7 +288,7 @@ def recalc_scores_for_test(test_id: str) -> None:
 
 @app.route("/")
 def index():
-    # Always start with a clean session to avoid stale admin access
+    # Start fresh to avoid stale sessions showing data without login
     session.clear()
     ensure_default_admin()
     seed_minimal()
@@ -865,7 +905,10 @@ def admin_test_live():
     if duration <= 0:
         duration = 10
     start_time = data.get("start_time")
-    start_dt = datetime.fromisoformat(start_time) if start_time else datetime.utcnow()
+    try:
+        start_dt = datetime.fromisoformat(start_time) if start_time else datetime.utcnow()
+    except Exception:
+        return jsonify({"error": "Invalid start_time"}), 400
     if not test_id or not class_name or not section:
         return jsonify({"error": "Missing fields"}), 400
     found = db.tests_master.find_one({"_id": oid(test_id)})
@@ -950,7 +993,9 @@ def admin_test_unarchive():
 
 def collect_responses_for_test(test_id: str) -> Tuple[list, dict, list]:
     live_ids = [str(t["_id"]) for t in db.tests_live.find({"test_id": str(test_id)})]
-    responses = list(db.responses.find({"test_live_id": {"$in": live_ids}}))
+    responses = list(
+        db.responses.find({"test_live_id": {"$in": live_ids}, "submitted_at": {"$exists": True}})
+    )
     students = {
         str(s["_id"]): s
         for s in db.students.find({"_id": {"$in": [oid(r["student_id"]) for r in responses if r.get("student_id")]}})
@@ -962,6 +1007,7 @@ def build_analytics(test_doc: dict, responses: list, students: dict) -> dict:
     scores = [r.get("score", 0) for r in responses]
     avg = round(sum(scores) / len(scores), 2) if scores else 0
     top = max(scores) if scores else 0
+    total_responses = len(responses)
     per_student = [
         {
             "student_id": r.get("student_id"),
@@ -974,9 +1020,11 @@ def build_analytics(test_doc: dict, responses: list, students: dict) -> dict:
     single = []
     for idx, q in enumerate(test_doc.get("single_correct", [])):
         counts = [{"count": 0, "students": []} for _ in q.get("opts", [])]
+        attempted = 0
         for r in responses:
             ans = r.get("answers_single", [])
             if idx < len(ans) and ans[idx] is not None and ans[idx] < len(counts):
+                attempted += 1
                 counts[ans[idx]]["count"] += 1
                 sid = r.get("student_id")
                 if sid in students:
@@ -987,15 +1035,20 @@ def build_analytics(test_doc: dict, responses: list, students: dict) -> dict:
                 "opts": q.get("opts", []),
                 "correct_idx": q.get("correct_idx"),
                 "counts": counts,
+                "attempted": attempted,
+                "total": total_responses,
             }
         )
 
     multi = []
     for idx, q in enumerate(test_doc.get("multi_correct", [])):
         counts = [{"count": 0, "students": []} for _ in q.get("opts", [])]
+        attempted = 0
         for r in responses:
             ans = r.get("answers_multi", [])
             if idx < len(ans):
+                if ans[idx]:
+                    attempted += 1
                 for opt in ans[idx] or []:
                     if opt is not None and opt < len(counts):
                         counts[opt]["count"] += 1
@@ -1008,12 +1061,15 @@ def build_analytics(test_doc: dict, responses: list, students: dict) -> dict:
                 "opts": q.get("opts", []),
                 "correct_indexes": q.get("correct_indexes", []),
                 "counts": counts,
+                "attempted": attempted,
+                "total": total_responses,
             }
         )
 
     return {
         "average": avg,
         "top": top,
+        "total_responses": total_responses,
         "per_student": per_student,
         "single": single,
         "multi": multi,
@@ -1063,8 +1119,30 @@ def teacher_test_create():
 
 @app.post("/teacher/test/edit")
 def teacher_test_edit():
-    # Restrict edits to admin per updated spec
-    return jsonify({"error": "Only admin can edit tests"}), 403
+    ok, resp, code = require_role(["teacher"])
+    if not ok:
+        return resp, code
+    data = get_json()
+    test_id = data.get("test_id")
+    if not test_id:
+        return jsonify({"error": "test_id required"}), 400
+    doc = db.tests_master.find_one({"_id": oid(test_id)})
+    if not doc or doc.get("archived") or str(doc.get("teacher_id")) != session.get("user_id"):
+        return jsonify({"error": "Test not found"}), 404
+    updates = {}
+    if "title" in data:
+        updates["title"] = data["title"]
+    if "single_correct" in data:
+        updates["single_correct"] = data["single_correct"]
+    if "multi_correct" in data:
+        updates["multi_correct"] = data["multi_correct"]
+    if "subject" in data:
+        updates["subject"] = data.get("subject") or "General"
+    if not updates:
+        return jsonify({"error": "Nothing to update"}), 400
+    db.tests_master.update_one({"_id": oid(test_id)}, {"$set": updates})
+    recalc_scores_for_test(test_id)
+    return jsonify({"status": "ok"})
 
 
 @app.post("/admin/test/edit")
@@ -1095,6 +1173,27 @@ def admin_test_edit():
     return jsonify({"status": "ok"})
 
 
+@app.post("/admin/test/delete")
+def admin_test_delete():
+    ok, resp, code = require_role(["admin"])
+    if not ok:
+        return resp, code
+    data = get_json()
+    test_id = data.get("test_id")
+    if not test_id:
+        return jsonify({"error": "test_id required"}), 400
+    live_ids = [str(t["_id"]) for t in db.tests_live.find({"test_id": str(test_id)})]
+    if live_ids:
+        db.responses.delete_many({"test_live_id": {"$in": live_ids}})
+        live_oids = [oid(tid) for tid in live_ids if oid(tid)]
+        if live_oids:
+            db.tests_live.delete_many({"_id": {"$in": live_oids}})
+    deleted = db.tests_master.delete_one({"_id": oid(test_id)})
+    if deleted.deleted_count == 0:
+        return jsonify({"error": "Test not found"}), 404
+    return jsonify({"status": "ok", "message": "Test deleted"})
+
+
 @app.get("/admin/test/<test_id>")
 def admin_test_details(test_id):
     ok, resp, code = require_role(["admin"])
@@ -1114,6 +1213,24 @@ def admin_test_details(test_id):
             "archived": doc.get("archived", False),
         }
     )
+
+
+@app.post("/admin/test/recalc")
+def admin_test_recalc():
+    ok, resp, code = require_role(["admin", "teacher"])
+    if not ok:
+        return resp, code
+    data = get_json()
+    test_id = data.get("test_id")
+    if not test_id:
+        return jsonify({"error": "test_id required"}), 400
+    doc = db.tests_master.find_one({"_id": oid(test_id)})
+    if not doc:
+        return jsonify({"error": "Test not found"}), 404
+    if session.get("role") == "teacher" and str(doc.get("teacher_id")) != session.get("user_id"):
+        return jsonify({"error": "unauthorized"}), 401
+    recalc_scores_for_test(test_id)
+    return jsonify({"status": "ok", "message": "Scores recalculated"})
 
 
 @app.get("/teacher/tests")
@@ -1145,12 +1262,39 @@ def teacher_analytics(test_id):
 
 # -------- Student -------- #
 def live_now(live_doc: dict) -> bool:
+    """Return whether a live test is currently within its scheduled window."""
     start = live_doc.get("start_time")
     duration = int(live_doc.get("duration", 0) or 0)
-    start_dt = datetime.fromisoformat(start) if start else datetime.utcnow()
+    try:
+        start_dt = datetime.fromisoformat(start) if start else None
+    except Exception:
+        start_dt = None
+    if not start_dt:
+        start_dt = datetime.utcnow()
+    if duration <= 0:
+        return False
     end_dt = start_dt + timedelta(minutes=duration)
     now = datetime.utcnow()
     return start_dt <= now <= end_dt
+
+
+def is_time_over(tl: dict, started_at: Optional[str]) -> bool:
+    """Check if a student's attempt window is over based on their start time or the live start time."""
+    duration = int(tl.get("duration", 0) or 0)
+    if duration <= 0:
+        return False
+    try:
+        base = datetime.fromisoformat(started_at) if started_at else None
+    except Exception:
+        base = None
+    if not base:
+        try:
+            base = datetime.fromisoformat(tl.get("start_time"))
+        except Exception:
+            base = None
+    if not base:
+        return False
+    return datetime.utcnow() > base + timedelta(minutes=duration)
 
 
 @app.get("/student/live")
@@ -1162,10 +1306,17 @@ def student_live():
     sec = session.get("section")
     live = []
     sid = session.get("user_id")
-    # relaxed query so students can still see tests even if class/section mismatch
     for tl in db.tests_live.find({"stopped": {"$ne": True}}).sort("start_time", -1):
         test_doc = db.tests_master.find_one({"_id": oid(tl.get("test_id"))})
         if not test_doc or test_doc.get("archived"):
+            continue
+        # enforce class/section targeting
+        if cls and tl.get("class") and tl.get("class") != cls:
+            continue
+        if sec and tl.get("section") and tl.get("section") != sec:
+            continue
+        # enforce schedule window
+        if not live_now(tl):
             continue
         # skip if student already submitted
         attempted = db.responses.find_one(
@@ -1173,8 +1324,6 @@ def student_live():
         )
         if attempted:
             continue
-        # prefer matching class/section but still show others
-        match = (not cls or tl.get("class") == cls) and (not sec or tl.get("section") == sec)
         live.append(
             {
                 "test_live_id": str(tl["_id"]),
@@ -1184,7 +1333,7 @@ def student_live():
                 "teacher_name": teacher_name(test_doc.get("teacher_id")),
                 "class": tl.get("class"),
                 "section": tl.get("section"),
-                "match": match,
+                "match": True,
             }
         )
     return jsonify({"tests": live})
@@ -1197,6 +1346,13 @@ def student_test(test_live_id):
         return resp, code
     tl = db.tests_live.find_one({"_id": oid(test_live_id)})
     if not tl or tl.get("stopped"):
+        return jsonify({"error": "Test not active"}), 404
+    # enforce class/section targeting
+    if session.get("class") and tl.get("class") and tl.get("class") != session.get("class"):
+        return jsonify({"error": "unauthorized"}), 401
+    if session.get("section") and tl.get("section") and tl.get("section") != session.get("section"):
+        return jsonify({"error": "unauthorized"}), 401
+    if not live_now(tl):
         return jsonify({"error": "Test not active"}), 404
     test_doc = db.tests_master.find_one({"_id": oid(tl.get("test_id"))})
     if not test_doc or test_doc.get("archived"):
@@ -1248,6 +1404,14 @@ def student_submit():
     tl = db.tests_live.find_one({"_id": oid(test_live_id)})
     if not tl:
         return jsonify({"error": "Test not found"}), 404
+    if tl.get("stopped"):
+        return jsonify({"error": "Test stopped"}), 400
+    if session.get("class") and tl.get("class") and tl.get("class") != session.get("class"):
+        return jsonify({"error": "unauthorized"}), 401
+    if session.get("section") and tl.get("section") and tl.get("section") != session.get("section"):
+        return jsonify({"error": "unauthorized"}), 401
+    if not live_now(tl):
+        return jsonify({"error": "Test not active"}), 404
     test_doc = db.tests_master.find_one({"_id": oid(tl.get("test_id"))})
     if not test_doc or test_doc.get("archived"):
         return jsonify({"error": "Test not found"}), 404
@@ -1260,42 +1424,66 @@ def student_submit():
 
     single_ans = [None] * len(test_doc.get("single_correct", []))
     multi_ans = [[] for _ in range(len(test_doc.get("multi_correct", [])))]
+    single_map: Dict[int, Optional[int]] = {}
+    multi_map: Dict[int, List[int]] = {}
     for entry in answers:
         qid = entry.get("id")
         selected = entry.get("selected", [])
         if qid and qid.startswith("s-"):
             try:
                 idx = int(qid.split("-")[1])
-                if 0 <= idx < len(single_ans) and selected:
-                    single_ans[idx] = int(selected[0])
             except Exception:
                 continue
+            if 0 <= idx < len(single_ans):
+                sel_list = selected if isinstance(selected, list) else [selected]
+                if sel_list:
+                    try:
+                        single_map[idx] = int(sel_list[-1])
+                    except Exception:
+                        continue
         elif qid and qid.startswith("m-"):
             try:
                 idx = int(qid.split("-")[1])
-                if 0 <= idx < len(multi_ans):
-                    multi_ans[idx] = [int(x) for x in selected]
             except Exception:
                 continue
+            if 0 <= idx < len(multi_ans):
+                if isinstance(selected, str):
+                    selected = [x for x in selected.replace(" ", "").split(",") if x]
+                elif isinstance(selected, (int, float)):
+                    selected = [selected]
+                elif not isinstance(selected, list):
+                    try:
+                        selected = list(selected)
+                    except Exception:
+                        selected = []
+                cleaned = []
+                for x in selected:
+                    try:
+                        cleaned.append(int(x))
+                    except Exception:
+                        continue
+                multi_map[idx] = cleaned
+    for idx, val in single_map.items():
+        single_ans[idx] = val
+    for idx, vals in multi_map.items():
+        # keep unique choices in order
+        seen = []
+        for v in vals:
+            if v not in seen:
+                seen.append(v)
+        multi_ans[idx] = seen
 
     # enforce per-student timer
     sid = session.get("user_id")
     started_at = (
         db.responses.find_one({"test_live_id": test_live_id, "student_id": sid}) or {}
     ).get("started_at")
-    if started_at:
-        try:
-            start_dt = datetime.fromisoformat(started_at)
-            if datetime.utcnow() > start_dt + timedelta(minutes=int(tl.get("duration", 0) or 0)):
-                auto = True
-            else:
-                auto = False
-        except Exception:
-            auto = False
-    else:
-        auto = False
+    if is_time_over(tl, started_at):
+        return jsonify({"error": "time_over"}), 400
+    auto = False
 
     score, sol_single, sol_multi = score_submission(test_doc, single_ans, multi_ans)
+    total_marks = max_score(test_doc)
     sid = session.get("user_id")
     db.responses.update_one(
         {"test_live_id": test_live_id, "student_id": sid},
@@ -1307,13 +1495,15 @@ def student_submit():
                 "answers_multi": multi_ans,
                 "score": score,
                 "submitted_at": now_iso(),
-                "auto_submitted": auto or tl.get("stopped", False),
+                "auto_submitted": auto,
             }
         },
         upsert=True,
     )
 
-    all_res = list(db.responses.find({"test_live_id": test_live_id}))
+    all_res = list(
+        db.responses.find({"test_live_id": test_live_id, "submitted_at": {"$exists": True}})
+    )
     scores = [r.get("score", 0) for r in all_res]
     class_avg = round(sum(scores) / len(scores), 2) if scores else 0
     sorted_scores = sorted(
@@ -1327,6 +1517,7 @@ def student_submit():
         {
             "status": "ok",
             "score": score,
+            "max_score": total_marks,
             "rank": rank,
             "total": len(sorted_scores),
             "class_average": class_avg,
@@ -1342,7 +1533,9 @@ def student_history():
         return resp, code
     sid = session.get("user_id")
     results = []
-    for r in db.responses.find({"student_id": sid}).sort("submitted_at", -1):
+    for r in db.responses.find({"student_id": sid, "submitted_at": {"$exists": True}}).sort(
+        "submitted_at", -1
+    ):
         tl = db.tests_live.find_one({"_id": oid(r.get("test_live_id"))})
         test_doc = (
             db.tests_master.find_one({"_id": oid(tl.get("test_id"))}) if tl else None
@@ -1353,6 +1546,7 @@ def student_history():
             {
                 "test_live_id": r.get("test_live_id"),
                 "title": test_doc.get("title") if test_doc else "Test",
+                "subject": test_doc.get("subject", "General") if test_doc else "",
                 "score": r.get("score", 0),
                 "submitted_at": r.get("submitted_at"),
             }
@@ -1366,7 +1560,9 @@ def student_result(test_live_id):
     if not ok:
         return resp, code
     sid = session.get("user_id")
-    r = db.responses.find_one({"test_live_id": test_live_id, "student_id": sid})
+    r = db.responses.find_one(
+        {"test_live_id": test_live_id, "student_id": sid, "submitted_at": {"$exists": True}}
+    )
     if not r:
         return jsonify({"error": "Result not found"}), 404
     tl = db.tests_live.find_one({"_id": oid(test_live_id)})
@@ -1386,9 +1582,11 @@ def student_result(test_live_id):
         (i + 1 for i, item in enumerate(sorted_scores) if item.get("student_id") == sid),
         None,
     )
+    total_marks = max_score(test_doc)
     return jsonify(
         {
             "score": score,
+            "max_score": total_marks,
             "rank": rank,
             "total": len(sorted_scores),
             "class_average": class_avg,
@@ -1427,126 +1625,369 @@ def date_filter_query(month: str = None, week: int = None, date_str: str = None)
 
 @app.get("/reports/leaderboard")
 def leaderboard():
-    try:
-        role = session.get("role")
-        if role not in ["admin", "teacher", "student"]:
-            return jsonify({"error": "unauthorized"}), 401
+    role = session.get("role")
+    if role == "student":
+        # Reuse the student summary for backward compatibility
+        return student_ranks()
+    if role not in ["admin", "teacher"]:
+        return jsonify({"error": "unauthorized"}), 401
 
-        report_type = request.args.get("type") or ""
-        if role == "student" and not report_type:
-            report_type = "student"
-        teacher_id = request.args.get("teacher_id")
-        class_name = request.args.get("class")
-        section = request.args.get("section")
-        school = request.args.get("school")
-        # student-only drilldown filters
-        school_only = request.args.get("school_only")
-        class_only = request.args.get("class_only")
-        section_only = request.args.get("section_only")
-        month = request.args.get("month")  # YYYY-MM
-        week = request.args.get("week")
-        date_str = request.args.get("date")
+    # collect submitted responses
+    responses = list(db.responses.find({"submitted_at": {"$exists": True}}))
+    if not responses:
+        return jsonify({"top": {}, "search": None})
 
-        date_q = date_filter_query(month, int(week) if week else None, date_str)
+    tests_live_map = {str(t["_id"]): t for t in db.tests_live.find({})}
+    tests_map = {str(t["_id"]): t for t in db.tests_master.find({"archived": {"$ne": True}})}
+    students_map = {str(s["_id"]): s for s in db.students.find({"archived": {"$ne": True}})}
+    teachers_map = {str(t["_id"]): t for t in db.teachers.find({"archived": {"$ne": True}})}
 
-        responses = list(db.responses.find({}))
-        if not responses:
-            return jsonify({"leaderboard": []})
+    def allow_response(r):
+        tl = tests_live_map.get(r.get("test_live_id"))
+        if not tl:
+            return False
+        test_doc = tests_map.get(tl.get("test_id"))
+        if not test_doc:
+            return False
+        if role == "teacher" and str(test_doc.get("teacher_id")) != session.get("user_id"):
+            return False
+        stu = students_map.get(r.get("student_id"))
+        if not stu:
+            return False
+        return True
 
-        tests_live_map = {str(t["_id"]): t for t in db.tests_live.find({})}
-        tests_map = {str(t["_id"]): t for t in db.tests_master.find({"archived": {"$ne": True}})}
-        students_map = {str(s["_id"]): s for s in db.students.find({"archived": {"$ne": True}})}
+    filtered = [r for r in responses if allow_response(r)]
+    if not filtered:
+        return jsonify({"top": {}, "search": None})
 
-        leaderboard_rows = {}
-
-        for r in responses:
-            tl = tests_live_map.get(r.get("test_live_id"))
-            if not tl:
+    def build_top(key_fn, name_fn):
+        agg = {}
+        for r in filtered:
+            key = key_fn(r)
+            name = name_fn(r, key)
+            if not key or name is None:
                 continue
-            test_doc = tests_map.get(tl.get("test_id"))
-            if not test_doc:
-                continue
-            student = students_map.get(r.get("student_id"))
-            if not student:
-                continue
-            # exclude archived students in leaderboard
-            if student.get("archived"):
-                continue
-            # teacher filter
-            if role == "teacher" and str(test_doc.get("teacher_id")) != session.get("user_id"):
-                continue
-            if role == "student" and teacher_id:
-                teacher_id = None  # ignore teacher filter for students
-            if teacher_id and str(test_doc.get("teacher_id")) != teacher_id:
-                continue
-            # student drilldown for their own school/class/section
-            if role == "student":
-                if school_only and student.get("school") != session.get("school"):
-                    continue
-                if class_only and student.get("class") != session.get("class"):
-                    continue
-                if section_only and student.get("section") != session.get("section"):
-                    continue
-            if class_name and student.get("class") != class_name:
-                continue
-            if section and student.get("section") != section:
-                continue
-            if school and student.get("school") != school:
-                continue
-            if date_q:
-                submitted_at = r.get("submitted_at")
-                if not submitted_at or not (date_q["$gte"] <= submitted_at < date_q["$lt"]):
-                    continue
+            st = agg.setdefault(key, {"name": name, "score_sum": 0, "count": 0})
+            st["score_sum"] += r.get("score", 0)
+            st["count"] += 1
+        rows = []
+        for key, st in agg.items():
+            avg = st["score_sum"] / st["count"] if st["count"] else 0
+            rows.append({"id": key, "name": st["name"], "avg": round(avg, 2), "tests": st["count"]})
+        rows.sort(key=lambda x: (-x["avg"], -x["tests"], x["name"]))
+        return rows[:3], rows  # return top3 and full list for search
 
-            key = None
-            name = ""
-            if report_type == "teacher":
-                key = str(test_doc.get("teacher_id"))
-                name = teacher_name(test_doc.get("teacher_id"))
-            elif report_type == "school":
-                key = student.get("school_id") or student.get("school")
-                name = student.get("school") or "School"
-            elif report_type == "section":
-                key = f"{student.get('class')}-{student.get('section')}"
-                name = f"{student.get('class')} {student.get('section')}"
-            elif report_type == "student":
-                key = r.get("student_id")
-                name = student.get("name", "Student")
-            else:  # class-wise default
-                key = student.get("class")
-                name = student.get("class") or "Class"
+    def key_school(r):
+        stu = students_map.get(r.get("student_id"), {})
+        return stu.get("school")
 
-            row = leaderboard_rows.get(key, {"name": name, "scores": [], "count": 0})
-            row["scores"].append(r.get("score", 0))
-            row["count"] += 1
-            leaderboard_rows[key] = row
+    def key_class(r):
+        stu = students_map.get(r.get("student_id"), {})
+        return stu.get("class")
 
-        output = []
-        for sid, info in leaderboard_rows.items():
-            avg = round(sum(info["scores"]) / max(1, info["count"]), 2)
-            output.append(
-                {"id": sid, "name": info["name"], "avg": avg, "tests": info["count"]}
-            )
+    def key_section(r):
+        stu = students_map.get(r.get("student_id"), {})
+        return f"{stu.get('class')}-{stu.get('section')}"
 
-        output.sort(key=lambda x: (-x["avg"], -x["tests"], x["name"]))
+    def key_student(r):
+        return r.get("student_id")
 
-        if role == "student":
-            student_id = session.get("user_id")
-            my_rank_info = None
-            for idx, row in enumerate(output):
-                if report_type == "student" and row["id"] == student_id:
-                    my_rank_info = {"rank": idx + 1, "total": len(output), **row}
-                    break
-            top_rows = output[:3]
-            if my_rank_info and all(r["id"] != my_rank_info["id"] for r in top_rows):
-                top_rows = top_rows + [my_rank_info]
-            return jsonify({"leaderboard": top_rows, "my_rank": my_rank_info})
+    def key_teacher(r):
+        tl = tests_live_map.get(r.get("test_live_id"))
+        test_doc = tests_map.get(tl.get("test_id")) if tl else None
+        return str(test_doc.get("teacher_id")) if test_doc else None
 
-        return jsonify({"leaderboard": output})
-    except Exception as e:
-        return jsonify({"error": "reports_failed", "detail": str(e)}), 500
+    top_school, all_school = build_top(key_school, lambda r, k: students_map.get(r.get("student_id"), {}).get("school"))
+    top_class, all_class = build_top(key_class, lambda r, k: k)
+    top_section, all_section = build_top(key_section, lambda r, k: k)
+    top_student, all_student = build_top(key_student, lambda r, k: students_map.get(k, {}).get("name", "Student"))
+    top_teacher, all_teacher = build_top(key_teacher, lambda r, k: teachers_map.get(k, {}).get("name", "Teacher"))
+
+    search_q = (request.args.get("q") or "").strip().lower()
+    search_res = None
+    if search_q:
+        def find_rank(rows, key):
+            for idx, item in enumerate(rows, 1):
+                if search_q in (item.get("name", "").lower()):
+                    return {"type": key, "rank": idx, "total": len(rows), **item}
+            return None
+
+        search_res = (
+            find_rank(all_student, "student")
+            or find_rank(all_teacher, "teacher")
+            or find_rank(all_class, "class")
+            or find_rank(all_section, "section")
+            or find_rank(all_school, "school")
+        )
+
+    return jsonify(
+        {
+            "top": {
+                "school": top_school,
+                "class": top_class,
+                "section": top_section,
+                "student": top_student,
+                "teacher": top_teacher,
+            },
+            "search": search_res,
+        }
+    )
+
+
+def _aggregate_student_avgs(responses: list, students_map: dict, student_id: str):
+    stats = {}
+    for r in responses:
+        sid = r.get("student_id")
+        if sid not in students_map:
+            continue
+        st = stats.setdefault(sid, {"score_sum": 0, "count": 0})
+        st["score_sum"] += r.get("score", 0)
+        st["count"] += 1
+    rows = []
+    for sid, st in stats.items():
+        if st["count"] == 0:
+            continue
+        avg = st["score_sum"] / st["count"]
+        rows.append((sid, avg, st["count"]))
+    rows.sort(
+        key=lambda x: (
+            -x[1],
+            -x[2],
+            students_map.get(x[0], {}).get("name", ""),
+        )
+    )
+    total = len(rows)
+    scope_avg = round(sum(r[1] for r in rows) / total, 2) if total else 0
+    top_avg = round(rows[0][1], 2) if rows else 0
+    rank = None
+    my_avg = None
+    for idx, (sid, avg, _) in enumerate(rows, 1):
+        if sid == student_id:
+            rank = idx
+            my_avg = avg
+            break
+    return rows, rank, my_avg, total, scope_avg, top_avg
+
+
+def _rank_delta(responses_scope: list, students_map: dict, student_id: str, latest_ts: str):
+    """Compute delta as previous rank (before latest submission) minus current rank."""
+    rows, curr_rank, _, _, _, _ = _aggregate_student_avgs(responses_scope, students_map, student_id)
+    if curr_rank is None:
+        return None, curr_rank
+    # remove student's latest submissions to simulate previous state
+    prev_scope = []
+    removed_any = False
+    for r in responses_scope:
+        if r.get("student_id") == student_id and r.get("submitted_at") == latest_ts:
+            removed_any = True
+            continue
+        prev_scope.append(r)
+    if not removed_any:
+        return None, curr_rank
+    _, prev_rank, _, _, _, _ = _aggregate_student_avgs(prev_scope, students_map, student_id)
+    if prev_rank is None:
+        return None, curr_rank
+    return prev_rank - curr_rank, curr_rank
+
+
+@app.get("/student/ranks")
+def student_ranks():
+    ok, resp, code = require_role(["student"])
+    if not ok:
+        return resp, code
+    sid = session.get("user_id")
+    # load maps with minimal fields to speed up rendering
+    students_map = {
+        str(s["_id"]): s
+        for s in db.students.find(
+            {"archived": {"$ne": True}},
+            {"name": 1, "school": 1, "class": 1, "section": 1},
+        )
+    }
+    me = students_map.get(sid)
+    if not me:
+        return jsonify({"error": "student_not_found"}), 404
+
+    # pull only needed fields from responses to reduce payload
+    responses_raw = list(
+        db.responses.find(
+            {"submitted_at": {"$exists": True}},
+            {"student_id": 1, "score": 1, "submitted_at": 1, "test_live_id": 1},
+        )
+    )
+
+    # prefetch tests_live and tests_master once to avoid per-row queries
+    live_ids = {r.get("test_live_id") for r in responses_raw if r.get("test_live_id")}
+    live_oid_list = [oid(x) for x in live_ids if oid(x)]
+    tests_live_map = {
+        str(t["_id"]): t
+        for t in db.tests_live.find(
+            {"_id": {"$in": live_oid_list}}, {"test_id": 1, "class": 1, "section": 1}
+        )
+    }
+    test_ids = {tl.get("test_id") for tl in tests_live_map.values() if tl.get("test_id")}
+    test_oid_list = [oid(x) for x in test_ids if oid(x)]
+    tests_map = {
+        str(t["_id"]): t
+        for t in db.tests_master.find(
+            {"_id": {"$in": test_oid_list}, "archived": {"$ne": True}}
+        )
+    }
+
+    responses = []
+    my_responses = []
+    for r in responses_raw:
+        stid = r.get("student_id")
+        if stid not in students_map:
+            continue
+        tl = tests_live_map.get(r.get("test_live_id"))
+        test_doc = tests_map.get(tl.get("test_id")) if tl else None
+        if not test_doc:
+            continue
+        r["_test_id"] = str(test_doc["_id"])
+        responses.append(r)
+        if stid == sid:
+            my_responses.append(r)
+    if not my_responses:
+        latest_ts = None
+    else:
+        latest_ts = max(r.get("submitted_at", "") for r in my_responses)
+
+    # scope filters
+    def scope_filter(predicate):
+        return [r for r in responses if predicate(r)]
+
+    # precompute student attributes for filters
+    def matches_school(r):
+        stu = students_map.get(r.get("student_id"), {})
+        return stu.get("school") == me.get("school")
+
+    def matches_class(r):
+        stu = students_map.get(r.get("student_id"), {})
+        return stu.get("class") == me.get("class")
+
+    def matches_section(r):
+        stu = students_map.get(r.get("student_id"), {})
+        return stu.get("class") == me.get("class") and stu.get("section") == me.get("section")
+
+    scopes = {
+        "overall": responses,
+        "school": scope_filter(matches_school),
+        "class": scope_filter(matches_class),
+        "section": scope_filter(matches_section),
+    }
+
+    payload = {}
+    for name, res_list in scopes.items():
+        rows, curr_rank, my_avg, total, scope_avg, top_avg = _aggregate_student_avgs(
+            res_list, students_map, sid
+        )
+        delta = None
+        if latest_ts:
+            delta, curr_rank = _rank_delta(res_list, students_map, sid, latest_ts)
+        payload[name] = {
+            "rank": curr_rank,
+            "total": total,
+            "average": round(my_avg, 2) if my_avg is not None else None,
+            "scope_average": scope_avg,
+            "top_average": top_avg,
+            "delta": delta,
+        }
+
+    # Group standings: how the student's school/class/section rank overall
+    def _group_rank(responses_list, students_lookup, target_key_fn):
+        agg = {}
+        for r in responses_list:
+            stu = students_lookup.get(r.get("student_id"), {})
+            key = target_key_fn(stu)
+            if not key:
+                continue
+            st = agg.setdefault(key, {"score_sum": 0, "count": 0})
+            st["score_sum"] += r.get("score", 0)
+            st["count"] += 1
+        rows = []
+        for key, st in agg.items():
+            if st["count"] == 0:
+                continue
+            rows.append((key, st["score_sum"] / st["count"], st["count"]))
+        rows.sort(key=lambda x: (-x[1], -x[2], x[0]))
+        total = len(rows)
+        rank = None
+        for idx, (key, _, _) in enumerate(rows, 1):
+            if key == target_key_fn(students_lookup.get(sid, {})):
+                rank = idx
+                break
+        return {"rank": rank, "total": total}
+
+    payload["relative_positions"] = {
+        "school": _group_rank(responses, students_map, lambda stu: stu.get("school")),
+        "class": _group_rank(responses, students_map, lambda stu: stu.get("class")),
+        "section": _group_rank(
+            responses,
+            students_map,
+            lambda stu: f"{stu.get('class')}-{stu.get('section')}" if stu.get("class") and stu.get("section") else None,
+        ),
+    }
+
+    my_avg = (
+        round(sum(r.get("score", 0) for r in my_responses) / len(my_responses), 2)
+        if my_responses
+        else None
+    )
+    my_tests = []
+    for r in sorted(my_responses, key=lambda x: x.get("submitted_at", ""), reverse=True):
+        tl = db.tests_live.find_one({"_id": oid(r.get("test_live_id"))})
+        test_doc = tests_map.get(tl.get("test_id")) if tl else None
+        if not test_doc:
+            continue
+        my_tests.append(
+            {
+                "test_live_id": r.get("test_live_id"),
+                "title": test_doc.get("title"),
+                "score": r.get("score", 0),
+                "max_score": max_score(test_doc),
+                "submitted_at": r.get("submitted_at"),
+            }
+        )
+
+    payload["my_average"] = my_avg
+    payload["my_tests"] = my_tests
+    payload["summary_table"] = [
+        {
+            "level": "Overall",
+            "rank": payload["overall"]["rank"],
+            "total": payload["overall"]["total"],
+            "delta": payload["overall"]["delta"],
+            "group_average": payload["overall"]["scope_average"],
+            "my_average": payload["overall"]["average"],
+        },
+        {
+            "level": "School",
+            "rank": payload["school"]["rank"],
+            "total": payload["school"]["total"],
+            "delta": payload["school"]["delta"],
+            "group_average": payload["school"]["scope_average"],
+            "my_average": payload["school"]["average"],
+        },
+        {
+            "level": "Class",
+            "rank": payload["class"]["rank"],
+            "total": payload["class"]["total"],
+            "delta": payload["class"]["delta"],
+            "group_average": payload["class"]["scope_average"],
+            "my_average": payload["class"]["average"],
+        },
+        {
+            "level": "Section",
+            "rank": payload["section"]["rank"],
+            "total": payload["section"]["total"],
+            "delta": payload["section"]["delta"],
+            "group_average": payload["section"]["scope_average"],
+            "my_average": payload["section"]["average"],
+        },
+    ]
+    return jsonify(payload)
 
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-

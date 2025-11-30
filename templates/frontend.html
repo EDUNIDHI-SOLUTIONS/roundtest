@@ -1,5 +1,4 @@
 
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -10,77 +9,278 @@
   <meta http-equiv="Expires" content="0">
   <title>TejasAI Exam Platform</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f6f7fb;
-      --card: #ffffff;
-      --accent: #4285f4;
-      --accent-dark: #1b66c9;
-      --muted: #6b7280;
-      --danger: #d14343;
-      --success: #1aab6b;
-      --shadow: 0 14px 40px rgba(0,0,0,0.08);
-      --radius: 16px;
+      --bg: #0c1220;
+      --bg-2: #0b132a;
+      --card: rgba(255,255,255,0.06);
+      --card-strong: rgba(255,255,255,0.12);
+      --border: rgba(255,255,255,0.1);
+      --accent: #22d3ee;
+      --accent-2: #f59e0b;
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --shadow: 0 20px 70px rgba(0,0,0,0.35);
+      --radius: 14px;
     }
     * { box-sizing: border-box; }
     body {
-      font-family: "Aptos", "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
-      background: radial-gradient(circle at 10% 20%, #eef3ff, #f6f7fb 25%), radial-gradient(circle at 90% 10%, #f4f7ff, #f6f7fb 35%), #f6f7fb;
+      font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(120% 80% at 12% 16%, rgba(34,211,238,0.16) 0%, transparent 42%),
+        radial-gradient(110% 80% at 88% 0%, rgba(245,158,11,0.18) 0%, transparent 48%),
+        linear-gradient(180deg, #0c1220 0%, #0a0f1c 100%);
+      color: var(--text);
+      margin: 0;
+      padding: 0 18px 60px;
       min-height: 100vh;
-      color: #1f2937;
+      overflow-x: hidden;
     }
-    .page-shell { max-width: 1200px; margin: 30px auto 80px; padding: 0 16px; }
-    .glass-card {
+    a { color: var(--accent); text-decoration: none; }
+    .page-shell { max-width: 1280px; margin: 0 auto; padding-top: 24px; position: relative; }
+
+    .hero {
+      display: flex;
+      gap: 24px;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid var(--border);
+      background: linear-gradient(120deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    }
+    .hero h1 { margin: 6px 0 12px; font-size: 30px; letter-spacing: 0.02em; }
+    .hero p { margin: 0 0 10px; color: var(--muted); max-width: 600px; }
+    .eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; color: var(--accent-2); font-weight: 700; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .hero-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); width: 420px; }
+    .metric-card { background: var(--card-strong); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+    .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-value { font-weight: 700; font-size: 16px; }
+
+    .toast-stack { position: fixed; top: 18px; right: 18px; z-index: 2200; width: min(360px, 92vw); }
+    .toast-stack .alert { border-radius: 12px; border: 1px solid var(--border); background: var(--card-strong); color: var(--text); }
+
+    .glass-card, .section-box {
       background: var(--card);
-      border: 1px solid rgba(66,133,244,0.08);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+    .section-box { margin-top: 28px; border-left: 4px solid var(--accent); }
+    .section-title { font-size: 18px; font-weight: 700; letter-spacing: 0.01em; color: #ffffff; }
+    .subtle { color: var(--muted); font-size: 14px; }
+    .small-info { color: var(--muted); font-size: 15px; line-height: 1.6; }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: linear-gradient(120deg, rgba(34,211,238,0.12), rgba(34,211,238,0.04));
+      border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      padding: 20px 22px;
+      margin-bottom: 20px;
+      align-items: center;
+      gap: 12px;
     }
-    .hero { text-align: center; margin-bottom: 20px; }
-    .hero h1 { font-weight: 700; letter-spacing: -0.02em; }
-    .pill { padding: 6px 12px; border-radius: 999px; border: 1px solid #d0d7e2; font-size: 13px; color: #4b5563; }
-    .btn-accent { background: linear-gradient(135deg, var(--accent), #5aa0ff); color: #fff; border: none; }
-    .btn-accent:hover { background: var(--accent-dark); color:#fff; }
-    .quick-actions .btn { margin: 6px; }
-    .section-title { font-weight: 700; font-size: 18px; margin-bottom: 8px; }
-    .list-card { border:1px solid #e5e7eb; border-radius: 12px; padding:14px; margin-bottom:12px; background:#fff; box-shadow: 0 6px 16px rgba(0,0,0,0.05); }
-    .subtle { color: var(--muted); font-size: 0.9rem; }
-    .tag { display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; margin-right:6px; }
-    .toast-stack { position: fixed; top: 16px; right: 16px; z-index: 2000; }
-    .modal-sheet { position: fixed; inset:0; background: rgba(15,23,42,0.35); display:none; visibility:hidden; align-items: center; justify-content: center; z-index: 1500; padding: 16px; }
-    .modal-sheet.show { display:flex; visibility:visible; }
-    .modal-body-card { background:#fff; border-radius:18px; padding:20px; width: min(980px, 95vw); max-height:90vh; overflow:auto; box-shadow: var(--shadow); }
-    .field-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
-    .question-card { border:1px solid #e5e7eb; border-radius:14px; padding:14px; margin-bottom:10px; background:#fdfdff; }
-    .option-chip { border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
-    .option-chip.selected { border-color: var(--success); background: #e7f6ef; color:#065f46; }
-    .option-chip .label { font-weight:600; margin-right:8px; }
-    .section-hidden { display:none; }
-    .grid-3 { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px; }
-    .exam-overlay { position:fixed; inset:0; background:linear-gradient(135deg,#eef3ff,#f7f9ff); z-index:1800; display:none; padding:20px; overflow-y:auto; }
-    .exam-card { width:min(960px, 100%); margin:0 auto; background:#fff; border-radius:18px; padding:20px; box-shadow: var(--shadow); }
-    .progress small { color:#111827; font-weight:600; }
-    .option-btn { width:100%; text-align:left; padding:12px 14px; border:1px solid #e5e7eb; border-radius:12px; background:#fbfdff; margin-bottom:10px; transition:all .15s ease; }
-    .option-btn:hover { transform: translateY(-1px); box-shadow:0 10px 24px rgba(66,133,244,0.08); }
-    .option-btn.active { border-color: var(--accent); background:#eaf2ff; }
-    .chips-row { display:flex; flex-wrap:wrap; gap:6px; }
-    @media (max-width: 640px) {
-      .hero h1 { font-size: 26px; }
-      .glass-card { padding: 16px; }
+    .topbar-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+    .topbar-buttons a {
+      padding: 8px 14px;
+      background: var(--accent);
+      color: #04121f;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .topbar-buttons a.logout { background: #ef4444; color: #ffffff; }
+
+    .section-hidden { display: none !important; }
+    .login-card { margin: 16px 0 10px; }
+    .grid-3 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .quick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    .list-card {
+      background: var(--card-strong);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card-strong);
+      color: var(--text);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .pill-ghost { background: rgba(255,255,255,0.04); border-style: dashed; }
+    .note { color: var(--muted); }
+    .rank-line { background: var(--card-strong); border: 1px solid var(--border); padding: 10px; border-radius: 12px; }
+
+    .btn-accent {
+      background: linear-gradient(120deg, var(--accent), #38bdf8);
+      color: #03111f;
+      border: none;
+      font-weight: 700;
+      box-shadow: 0 12px 30px rgba(56,189,248,0.35);
+    }
+    .btn-accent:hover { color: #03111f; box-shadow: 0 14px 34px rgba(56,189,248,0.45); }
+    .btn-outline-primary { border-color: var(--accent); color: var(--accent); }
+    .btn-outline-primary:hover { background: var(--accent); color: #03111f; }
+    .btn-outline-secondary { border-color: var(--muted); color: var(--text); }
+    .btn-outline-danger { border-color: var(--danger); color: var(--danger); }
+    .btn-outline-danger:hover { background: var(--danger); color: #ffffff; }
+
+    .form-control, .form-select { background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text); }
+    .form-control::placeholder { color: var(--muted); }
+    .form-control:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 0.15rem rgba(34,211,238,0.25); }
+    label.form-label { color: var(--muted); font-weight: 600; }
+
+    table { color: var(--text); }
+    table th { background: rgba(255,255,255,0.06); color: var(--text); border-color: var(--border); }
+    table td { border-color: var(--border); }
+
+    .question-card { background: var(--card-strong); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .option-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      margin: 6px 0;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      background: rgba(255,255,255,0.02);
+    }
+    .option-chip .label {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--card);
+      color: var(--text);
+      font-weight: 700;
+    }
+    .option-chip.selected { border-color: var(--accent); background: rgba(34,211,238,0.12); box-shadow: 0 8px 26px rgba(34,211,238,0.18); }
+
+    .option-btn {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: var(--card-strong);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      transition: all 0.15s ease;
+    }
+    .option-btn:hover { border-color: var(--accent); }
+    .option-btn.active {
+      border-color: var(--accent);
+      background: linear-gradient(120deg, rgba(34,211,238,0.12), rgba(34,211,238,0.05));
+      box-shadow: 0 8px 22px rgba(34,211,238,0.18);
+    }
+
+    .modal-sheet {
+      position: fixed;
+      inset: 0;
+      background: rgba(4,6,14,0.8);
+      z-index: 1600;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 12px;
+      overflow-y: auto;
+    }
+    .modal-sheet.show { display: flex; }
+    .modal-body-card {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      width: min(1024px, 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .summary-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .summary-card .label { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .summary-card .value { font-weight: 700; color: #fff; }
+
+    .exam-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5,7,15,0.82);
+      z-index: 1800;
+      padding: 24px;
+      overflow-y: auto;
+      display: none;
+    }
+    .exam-overlay.show { display: block; }
+    .exam-card {
+      max-width: 900px;
+      margin: 30px auto;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .score-banner { font-size: 30px; font-weight: 800; color: #ffffff; }
+
+    @media (max-width: 780px) {
+      .hero { flex-direction: column; }
+      .hero-grid { width: 100%; }
+      .topbar { flex-direction: column; align-items: flex-start; }
+      .page-shell { padding-top: 18px; }
     }
   </style>
 </head>
 <body>
   <div class="toast-stack" id="toast-stack"></div>
   <div class="page-shell">
-    <div class="hero">
-      <div class="pill">TejasAI</div>
-      <h1 class="mt-2">TejasAI Exam Platform</h1>
-      <p class="text-secondary">One-screen login. Smart defaults. Clean exam feel.</p>
-    </div>
-
-    <div id="login-card" class="glass-card mb-3">
+    <header class="hero glass-card mb-3">
+      <div>
+        <div class="eyebrow">Assessment cockpit</div>
+        <h1>TejasAI control room</h1>
+        <p>Run live exams, onboard teachers and students, and see performance snapshots at a glance.</p>
+        <div class="hero-actions">
+          <span class="pill">Live-ready</span>
+          <span class="pill">Teacher & admin tools</span>
+          <span class="pill">Student-first UI</span>
+        </div>
+      </div>
+      <div class="hero-grid">
+        <div class="metric-card">
+          <div class="metric-label">Access</div>
+          <div class="metric-value">Admin / Teacher / Student</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Scoring</div>
+          <div class="metric-value">Auto with analytics</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Sessions</div>
+          <div class="metric-value">Live & history</div>
+        </div>
+      </div>
+    </header>
+    <div id="login-card" class="glass-card mb-3 login-card">
       <div class="row g-3 align-items-end">
         <div class="col-md-4">
           <label class="form-label">Mobile number</label>
@@ -97,15 +297,11 @@
     </div>
 
     <div id="app-shell" class="section-hidden">
-      <div class="glass-card d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <div class="text-uppercase text-muted" style="font-size:12px;">Signed in</div>
-          <div class="fw-semibold" id="user-name"></div>
-          <div class="badge bg-light text-dark" id="user-role"></div>
-        </div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-outline-secondary" id="refresh-all">Refresh</button>
-          <button class="btn btn-outline-danger" id="logout-btn">Logout</button>
+      <div class="topbar">
+        <div class="small-info" id="info-line-left"></div>
+        <div class="topbar-buttons">
+          <a href="javascript:void(0)" id="refresh-all">Refresh</a>
+          <a href="javascript:void(0)" class="logout" id="logout-btn">Logout</a>
         </div>
       </div>
       <div id="admin-area" class="section-hidden">
@@ -152,45 +348,6 @@
           </div>
           <div id="admin-live-list"></div>
         </div>
-        <div class="glass-card mt-3">
-          <div class="section-title mb-1">Leaderboard</div>
-          <div class="row g-2 align-items-end mb-2">
-            <div class="col-md-4">
-              <label class="form-label">Report type</label>
-              <select id="admin-report-type" class="form-select">
-                <option value="class">Class-wise</option>
-                <option value="section">Section-wise</option>
-                <option value="school">School-wise</option>
-                <option value="student">Student-wise</option>
-                <option value="teacher">Teacher-wise</option>
-              </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">School</label>
-              <select id="admin-report-school" class="form-select" onchange="updateReportClass('admin-')"></select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Class</label>
-              <select id="admin-report-class" class="form-select" onchange="updateReportClass('admin-')"></select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Section</label>
-              <select id="admin-report-section" class="form-select"></select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Month (YYYY-MM)</label>
-              <input type="month" id="admin-report-month" class="form-control" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Date</label>
-              <input type="date" id="admin-report-date" class="form-control" />
-            </div>
-            <div class="col-md-2">
-              <button class="btn btn-accent w-100" onclick="loadReports('admin-leaderboard','admin-')">Apply</button>
-            </div>
-          </div>
-          <div id="admin-leaderboard"></div>
-        </div>
       </div>
 
       <div id="teacher-area" class="section-hidden">
@@ -212,44 +369,47 @@
       </div>
 
       <div id="student-area" class="section-hidden">
-        <div class="glass-card mb-3 d-flex justify-content-between align-items-center">
-          <div>
-            <div class="section-title mb-1">Live tests</div>
-            <div class="subtle">Only class/section-matched tests are highlighted.</div>
-          </div>
-          <button class="btn btn-outline-secondary" onclick="loadStudent()">Refresh</button>
+        <div class="section-box">
+          <div class="section-title">Live Tests</div>
+          <div id="live-tests"></div>
+          <p class="note" id="live-tests-note">No live tests right now.</p>
         </div>
-        <div class="grid-3" id="live-tests"></div>
-        <div class="glass-card mt-3">
-          <div class="section-title mb-1">Previous attempts</div>
-          <div id="history-list"></div>
+
+        <div class="section-box" id="student-summary-card">
+          <div class="section-title mb-1">Student Performance Summary</div>
+          <div id="student-summary-table" class="mb-3"></div>
+          <div id="student-relative" class="mb-2"></div>
         </div>
-      <div class="glass-card mt-3">
-        <div class="section-title mb-1">Leaderboard</div>
-          <div class="row g-2 align-items-end mb-2">
-            <div class="col-md-4">
-              <label class="form-label">Report type</label>
-              <select id="report-type" class="form-select">
-                <option value="class">Class-wise</option>
-                <option value="section">Section-wise</option>
-                <option value="school">School-wise</option>
-                <option value="student">Student-wise</option>
-              </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Month (YYYY-MM)</label>
-              <input type="month" id="report-month" class="form-control" />
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Date</label>
-              <input type="date" id="report-date" class="form-control" />
-            </div>
-            <div class="col-md-2">
-              <button class="btn btn-accent w-100" onclick="loadReports()">Apply</button>
-            </div>
-          </div>
-        <div id="leaderboard"></div>
+
+        <div class="section-box">
+          <div class="section-title">My Previous Attempts</div>
+          <table class="student-table" id="history-table">
+            <thead>
+              <tr>
+                <th>Test Name</th>
+                <th>Subject</th>
+                <th>Date Attempted</th>
+                <th>Score</th>
+                <th>View</th>
+              </tr>
+            </thead>
+            <tbody id="history-list"></tbody>
+          </table>
+        </div>
       </div>
+
+      <div id="rank-area" class="section-hidden">
+        <div class="glass-card mt-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="section-title mb-0">Top performers</div>
+            <div class="d-flex gap-2">
+              <input class="form-control form-control-sm" style="width: 220px;" id="rank-search" placeholder="Search student/teacher/class">
+              <button class="btn btn-sm btn-accent" onclick="loadRankBoards()">Search</button>
+            </div>
+          </div>
+          <div id="rank-top" class="row g-3"></div>
+          <div id="rank-search-result" class="mt-2"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -532,7 +692,7 @@
     </div>
   </div>
   <script>
-    const state = { role: null, schools: [], classMap: {}, sectionMap: {}, exam: null, leaderboardType:'class', teachers: [], subjects: [] };
+    const state = { role: null, schools: [], classMap: {}, sectionMap: {}, exam: null, teachers: [], subjects: [] };
 
     function setSubjectOptions(selectId, value="General"){
       const el=document.getElementById(selectId);
@@ -688,13 +848,21 @@
       state.role = role;
       document.getElementById('login-card').classList.add('section-hidden');
       document.getElementById('app-shell').classList.remove('section-hidden');
-      document.getElementById('user-name').textContent = name || '';
-      document.getElementById('user-role').textContent = role?.toUpperCase();
+      if(role==='student'){
+        const cls = extra.class || '';
+        const sec = extra.section || '';
+        document.getElementById('info-line-left').innerHTML = `Student: <b>${name||''}</b><br>Class: <b>${cls}</b> | Section: <b>${sec}</b>`;
+      } else if(role==='teacher'){
+        document.getElementById('info-line-left').innerHTML = `Teacher: <b>${name||''}</b>`;
+      } else if(role==='admin'){
+        document.getElementById('info-line-left').innerHTML = `Admin: <b>${name||''}</b>`;
+      }
       document.getElementById('admin-area').classList.toggle('section-hidden', role!=='admin');
       document.getElementById('teacher-area').classList.toggle('section-hidden', role!=='teacher');
       document.getElementById('student-area').classList.toggle('section-hidden', role!=='student');
+      document.getElementById('rank-area').classList.toggle('section-hidden', !(role==='admin' || role==='teacher'));
       if (role === 'admin') loadAdmin();
-      if (role === 'teacher') { loadSubjects().then(()=>resetBuilder()); loadTeacherTests(); }
+      if (role === 'teacher') { loadSubjects().then(()=>resetBuilder()); loadTeacherTests(); loadRankBoards(); }
       if (role === 'student') loadStudent();
     }
 
@@ -703,8 +871,8 @@
       location.reload();
     };
     document.getElementById('refresh-all').onclick = () => {
-      if (state.role === 'admin') loadAdmin();
-      if (state.role === 'teacher') loadTeacherTests();
+      if (state.role === 'admin') { loadAdmin(); loadRankBoards(); }
+      if (state.role === 'teacher') { loadTeacherTests(); loadRankBoards(); }
       if (state.role === 'student') loadStudent();
     };
 
@@ -712,7 +880,6 @@
       await Promise.all([loadSchoolTree(), loadSubjects(), loadTeachers(), loadStudents(), refreshLiveTests()]).catch(err => showToast(err.message,'danger'));
       const grid=document.getElementById('admin-tests-list');
       if(grid) grid.innerHTML='<div class="subtle">Choose a teacher to load tests.</div>';
-      loadReports('admin-leaderboard','admin-');
       populatePublishSelects();
     }
 
@@ -753,7 +920,6 @@
     function populateSchoolSelects() {
       const schoolOpts = state.schools.map(s=>({id:s.id, name:s.name}));
       ['stu-school','school-select'].forEach(id => populateSelect(id, schoolOpts));
-      populateReportFilters();
       handleSchoolChange('stu');
     }
 
@@ -779,27 +945,6 @@
       const classId=classSel.value;
       const cls=state.schools.flatMap(s=>s.classes||[]).find(c=>c.id===classId);
       populateSelect('section-select',(cls?.sections||[]).map(s=>({id:s.id,name:s.name})));
-    }
-
-    function populateReportFilters(){
-      const schoolOpts = [{id:'',name:'All'}, ...state.schools.map(s=>({id:s.name,name:s.name}))];
-      ['admin-report-school'].forEach(id=>populateSelect(id, schoolOpts));
-      updateReportClass('admin-');
-    }
-
-    function updateReportClass(prefix='admin-'){
-      const schSel=document.getElementById(`${prefix}report-school`);
-      const clsSel=document.getElementById(`${prefix}report-class`);
-      const secSel=document.getElementById(`${prefix}report-section`);
-      if(!schSel||!clsSel||!secSel) return;
-      const school = state.schools.find(s=>s.name===schSel.value);
-      const classes = [{id:'',name:'All'}, ...((school?.classes||[]).map(c=>({id:c.name,name:c.name})))];
-      clsSel.innerHTML = classes.map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
-      const firstCls = classes[0]?.name || '';
-      const selectedCls = clsSel.value || firstCls;
-      const clsObj = (school?.classes||[]).find(c=>c.name===selectedCls);
-      const sections = [{id:'',name:'All'}, ...((clsObj?.sections||[]).map(s=>({id:s.name,name:s.name})))];
-      secSel.innerHTML = sections.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
     }
 
     function populateSelect(id, options) {
@@ -934,7 +1079,7 @@
           el.innerHTML = `<div class="d-flex justify-content-between align-items-start">
               <div>
                 <div class="fw-semibold">${s.name} <span class="subtle">${s.mobile}</span></div>
-                <div class="subtle">${s.school} • ${s.class} ${s.section}</div>
+                <div class="subtle">${s.school} | ${s.class} ${s.section}</div>
               </div>
               <input type="checkbox" class="form-check-input student-select" data-id="${s.id}">
             </div>
@@ -1115,7 +1260,7 @@
         const card=document.createElement('div');
         card.className='glass-card';
         const created = formatIST(t.created_at);
-        card.innerHTML=`<div class="fw-semibold mb-1">${t.title}</div><div class="subtle">${t.teacher_name||''}${t.subject?` • ${t.subject}`:''}${created?` • ${created}`:''}</div><div class="d-flex gap-2 mt-2"><span class="badge ${t.archived?'bg-warning text-dark':'bg-success'}">${t.archived?'Archived':'Ready'}</span><button class="btn btn-sm btn-outline-primary" onclick="openPublishWith('${t.id}')">Make Live</button><button class="btn btn-sm btn-outline-secondary" onclick="openEditTest('${t.id}')">Edit</button><button class="btn btn-sm btn-outline-${t.archived?'success':'danger'}" onclick="toggleArchiveTest('${t.id}',${!t.archived})">${t.archived?'Unarchive':'Archive'}</button></div>`;
+        card.innerHTML=`<div class="fw-semibold mb-1">${t.title}</div><div class="subtle">${t.teacher_name||''}${t.subject?` | ${t.subject}`:''}${created?` | ${created}`:''}</div><div class="d-flex flex-wrap gap-2 mt-2"><button class="btn btn-sm btn-outline-primary" onclick="openPublishWith('${t.id}')">Make Live</button><button class="btn btn-sm btn-outline-secondary" onclick="openEditTest('${t.id}')">Edit</button><button class="btn btn-sm btn-outline-success" onclick="recalcTest('${t.id}')">Recalc scores</button><button class="btn btn-sm btn-outline-danger" onclick="deleteTest('${t.id}')">Delete</button></div>`;
         wrap.appendChild(card);
       });
       if((data.tests||[]).length===0){
@@ -1180,6 +1325,19 @@
         payload.push(multi?{q,opts,correct_indexes:selected}:{q,opts,correct_idx:selected[0]});
       }
       return payload;
+    }
+
+    async function deleteTest(id){
+      if(!confirm('Delete this test? All live sessions and responses will be removed.')) return;
+      await api('/admin/test/delete',{method:'POST',body:JSON.stringify({test_id:id})});
+      showToast('Test deleted','warning');
+      const tid=document.getElementById('admin-tests-teacher')?.value||'';
+      loadAdminTests(tid);
+    }
+
+    async function recalcTest(id){
+      await api('/admin/test/recalc',{method:'POST',body:JSON.stringify({test_id:id})});
+      showToast('Scores recalculated','success');
     }
 
     async function toggleArchiveTest(id, archived){
@@ -1257,7 +1415,7 @@
       (data.live||[]).forEach(l=>{
         const el=document.createElement('div');
         el.className='list-card';
-        el.innerHTML=`<div class="fw-semibold">${l.title}</div><div class="subtle">${l.class} ${l.section} • ${l.duration} mins</div><div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-danger" onclick="stopTest('${l.id}')">Stop</button></div>`;
+        el.innerHTML=`<div class="fw-semibold">${l.title}</div><div class="subtle">${l.class} ${l.section} | ${l.duration} mins</div><div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-danger" onclick="stopTest('${l.id}')">Stop</button></div>`;
         wrap.appendChild(el);
       });
     }
@@ -1344,6 +1502,7 @@
         el.innerHTML=`<div class="fw-semibold">${t.title}</div><div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-primary" onclick="loadTeacherAnalytics('${t.id}')">Analytics</button></div>`;
         wrap.appendChild(el);
       });
+      loadRankBoards();
     }
 
     async function loadTeacherAnalytics(testId){
@@ -1351,7 +1510,7 @@
       renderAnalytics(data, 'teacher-analytics');
     }
     async function loadStudent(){
-      await Promise.all([loadLiveTests(), loadHistory(), loadReports()]).catch(err=>showToast(err.message,'danger'));
+      await Promise.all([loadLiveTests(), loadHistory(), loadStudentRanks()]).catch(err=>showToast(err.message,'danger'));
     }
 
     async function loadLiveTests(){
@@ -1361,7 +1520,7 @@
       (data.tests||[]).forEach(t=>{
         const card=document.createElement('div');
         card.className='glass-card';
-        card.innerHTML=`<div class="fw-semibold mb-1">${t.title}</div><div class="subtle">${t.class} ${t.section} • ${t.duration} mins</div><div class="mt-2 d-flex gap-2"><span class="badge ${t.match?'bg-success':'bg-secondary'}">${t.match?'Matched':'Open'}</span><button class="btn btn-sm btn-accent" onclick="startLiveTest('${t.test_live_id}')">Start</button></div>`;
+        card.innerHTML=`<div class="fw-semibold mb-1">${t.title}</div><div class="subtle">${t.class} ${t.section} | ${t.duration} mins</div><div class="mt-2 d-flex gap-2"><span class="badge ${t.match?'bg-success':'bg-secondary'}">${t.match?'Matched':'Open'}</span><button class="btn btn-sm btn-accent" onclick="startLiveTest('${t.test_live_id}')">Start</button></div>`;
         wrap.appendChild(card);
       });
       if((data.tests||[]).length===0){ wrap.innerHTML='<div class="subtle">No live tests right now.</div>'; }
@@ -1372,11 +1531,13 @@
       const wrap=document.getElementById('history-list');
       wrap.innerHTML='';
       (data.results||[]).forEach(r=>{
-        const el=document.createElement('div');
-        el.className='list-card';
-        el.innerHTML=`<div class="fw-semibold">${r.title}</div><div class="subtle">Score: ${r.score}</div><button class="btn btn-sm btn-outline-primary mt-2" onclick="viewResult('${r.test_live_id}')">View result</button>`;
-        wrap.appendChild(el);
+        const row=document.createElement('tr');
+        row.innerHTML=`<td>${r.title}</td><td>${r.subject||''}</td><td>${formatIST(r.submitted_at) || ''}</td><td>${r.score}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="viewResult('${r.test_live_id}')">View</button></td>`;
+        wrap.appendChild(row);
       });
+      if((data.results||[]).length===0){
+        wrap.innerHTML='<tr><td colspan="5" class="subtle">No attempts yet.</td></tr>';
+      }
     }
 
     async function viewResult(id){
@@ -1397,7 +1558,7 @@
         answers: {}
       };
       document.getElementById('exam-title').textContent = data.title;
-      document.getElementById('exam-overlay').style.display='block';
+      document.getElementById('exam-overlay').classList.add('show');
       document.getElementById('exam-result').innerHTML='';
       renderQuestion();
       startTimer();
@@ -1482,6 +1643,8 @@
 
     function renderResult(data){
       const container = document.getElementById('exam-result');
+      const maxScore = data.max_score || ((data.solutions?.single?.length||0) + 2 * (data.solutions?.multi?.length||0)) || 20;
+      const rankText = data.rank ? `Rank ${data.rank}/${data.total||''}` : 'Rank -';
       const single = (data.solutions?.single||[]).map((q,idx)=>{
         const opts = q.options.map((o,i)=>`<div class="d-flex justify-content-between ${q.correct===i?'text-success fw-semibold':''} ${q.submitted===i&&!q.is_correct?'text-danger':''}"><span>${String.fromCharCode(65+i)}. ${o}</span><span class="subtle">${q.correct===i?'Correct':''}${q.submitted===i&&!q.is_correct?' (Your choice)':''}</span></div>`).join('');
         return `<div class="list-card mb-2"><div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Single) </span><span class="subtle">(+1/0)</span></div><div class="mb-1">${q.q}</div>${opts}</div>`;
@@ -1491,97 +1654,131 @@
         return `<div class="list-card mb-2"><div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Multi)</span><span class="subtle">(+2/0)</span></div><div class="mb-1">${q.q}</div>${opts}</div>`;
       }).join('');
       container.innerHTML = `
-        <div class="glass-card mb-3">
-          <div class="fw-semibold">Score ${data.score} / total</div>
-          <div class="subtle">Rank ${data.rank||'-'} of ${data.total||''} • Class avg ${data.class_average}</div>
+        <div class="glass-card mb-3 text-center">
+          <div class="score-banner">${data.score} / ${maxScore}</div>
+          <div class="subtle">${rankText} | Class avg ${data.class_average||0}</div>
         </div>
         ${single}${multi}
       `;
-      document.getElementById('exam-overlay').style.display='block';
+      const overlay=document.getElementById('exam-overlay');
+      if(overlay){
+        overlay.classList.add('show');
+        overlay.style.display='block';
+      }
     }
 
     function closeExam(){
       const overlay=document.getElementById('exam-overlay');
+      if(!overlay) return;
+      overlay.classList.remove('show');
       overlay.style.display='none';
       if(state.exam?.timer) clearInterval(state.exam.timer);
       state.exam=null;
     }
 
-    async function loadReports(targetId='leaderboard', prefix=''){
-      const type = document.getElementById(`${prefix}report-type`)?.value || 'class';
-      const month = document.getElementById(`${prefix}report-month`)?.value;
-      const week = document.getElementById(`${prefix}report-week`)?.value;
-      const params = new URLSearchParams();
-      if(type) params.set('type', type);
-      if(month) params.set('month', month);
-      if(week) params.set('week', week);
-      const dateVal = document.getElementById(`${prefix}report-date`)?.value;
-      if(dateVal) params.set('date', dateVal);
-      const scopeEl = document.getElementById(`${prefix||''}report-scope`);
-      if(scopeEl){
-        const scope = scopeEl.value;
-        if(scope==='school') params.set('school_only', '1');
-        if(scope==='class') params.set('class_only', '1');
-        if(scope==='section') params.set('section_only', '1');
-      }
-      // admin/teacher explicit school/class/section filters
-      if(prefix==='admin-' || state.role==='teacher'){
-        const sch=document.getElementById(`${prefix}report-school`)?.value;
-        const cls=document.getElementById(`${prefix}report-class`)?.value;
-        const sec=document.getElementById(`${prefix}report-section`)?.value;
-        if(sch) params.set('school', sch);
-        if(cls) params.set('class', cls);
-        if(sec) params.set('section', sec);
-      }
-      const board = document.getElementById(targetId);
-      if (board) board.innerHTML = '<div class="subtle">Loading reports...</div>';
-      try {
-        const data = await api(`/reports/leaderboard?${params.toString()}`);
-        renderLeaderboard(data.leaderboard||[], state.role, data.my_rank || null, targetId);
-      } catch(err) {
-        showToast(err.message,'danger');
-        if (board) board.innerHTML='<div class="subtle">Unable to load reports.</div>';
+    async function loadStudentRanks(){
+      const tbl = document.getElementById('student-summary-table');
+      const rel = document.getElementById('student-relative');
+      if(tbl) tbl.innerHTML = '<div class="subtle">Loading...</div>';
+      try{
+        const data = await api('/student/ranks');
+        renderStudentSummary(data);
+      }catch(err){
+        if(tbl) tbl.innerHTML = `<div class="subtle">${err.message}</div>`;
+        if(rel) rel.innerHTML = '';
       }
     }
 
-    function renderLeaderboard(rows, role, myRank=null, targetId='leaderboard'){
-      const wrap=document.getElementById(targetId);
-      if (!wrap) return;
-      wrap.innerHTML='';
-      if(role==='student'){
-        const table=document.createElement('div');
-        table.className='list-card';
-        const header=`<div class="fw-semibold mb-2">Top Ranks</div>`;
-        const body=rows.slice(0,3).map((r,idx)=>`<div class="d-flex justify-content-between"><div>${idx+1}. ${r.name}</div><div class="subtle">Avg ${r.avg} | Tests ${r.tests}</div></div>`).join('') || '<div class="subtle">No data yet.</div>';
-        // Rank delta for student
-        let deltaHtml='';
-        if(myRank){
-          const prev = Number(localStorage.getItem('my_rank_prev')||0);
-          if(prev){
-            const diff = prev - (myRank.rank||prev);
-            if(diff>0) deltaHtml = `<span class="text-success">▲ +${diff}</span>`;
-            else if(diff<0) deltaHtml = `<span class="text-danger">▼ ${diff}</span>`;
-          }
-          localStorage.setItem('my_rank_prev', myRank.rank||0);
-        }
-        const myRow = myRank ? `<hr><div class="fw-semibold">My Rank ${deltaHtml}</div><div class="d-flex justify-content-between"><div>${myRank.rank}/${myRank.total} ${myRank.name||''}</div><div class="subtle">Avg ${myRank.avg} | Tests ${myRank.tests}</div></div>` : '';
-        table.innerHTML = header + body + myRow;
-        wrap.appendChild(table);
-        return;
+            
+    function renderStudentSummary(data){
+      const tbl=document.getElementById('student-summary-table');
+      const rel=document.getElementById('student-relative');
+      if(!tbl||!rel) return;
+      const rows = data.summary_table || [];
+      const cards = rows.length ? rows.map(r=>{
+        const rankText = r.rank && r.total ? `${r.rank}/${r.total}` : '-';
+        const delta = typeof r.delta==='number'
+          ? (r.delta>0? `-${Math.abs(r.delta)}` : r.delta<0? `+${Math.abs(r.delta)}` : '0')
+          : '';
+        const grp = (r.group_average ?? '-');
+        const mine = (r.my_average ?? '-');
+        const top = (r.top_average ?? '-');
+        return `<div class="list-card summary-card">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">${r.level}</div>
+            <span class="pill pill-ghost">Rank ${rankText}${delta ? ' ('+delta+')' : ''}</span>
+          </div>
+          <div class="d-flex justify-content-between"><span class="label">Average</span><span class="value">${grp}</span></div>
+          <div class="d-flex justify-content-between"><span class="label">Your avg</span><span class="value">${mine}</span></div>
+          <div class="d-flex justify-content-between"><span class="label">Top avg (best)</span><span class="value">${top}</span></div>
+        </div>`;
+      }).join('') : '<div class="subtle">No data yet.</div>';
+      tbl.innerHTML = `<div class="summary-grid">${cards}</div>`;
+      const relData = data.relative_positions || {};
+      rel.innerHTML = `
+        <div class="d-flex flex-wrap gap-2">
+          <span class="pill">School standing: ${relData.school?.rank||'-'}/${relData.school?.total||'-'}</span>
+          <span class="pill">Class standing: ${relData.class?.rank||'-'}/${relData.class?.total||'-'}</span>
+          <span class="pill">Section standing: ${relData.section?.rank||'-'}/${relData.section?.total||'-'}</span>
+        </div>`;
+    }
+
+
+
+    async function loadRankBoards(){
+      const wrap = document.getElementById('rank-top');
+      const searchResEl = document.getElementById('rank-search-result');
+      if(wrap) wrap.innerHTML = '<div class="subtle">Loading...</div>';
+      const q = document.getElementById('rank-search')?.value || '';
+      const params = q ? `?q=${encodeURIComponent(q)}` : '';
+      try{
+        const data = await api(`/reports/leaderboard${params}`);
+        renderRankBoards(data);
+      }catch(err){
+        if(wrap) wrap.innerHTML = `<div class="subtle">${err.message}</div>`;
+        if(searchResEl) searchResEl.innerHTML='';
       }
-      rows.forEach((r,idx)=>{
-        const el=document.createElement('div');
-        el.className='list-card d-flex justify-content-between align-items-center';
-        el.innerHTML=`<div><div class="fw-semibold">${idx+1}. ${r.name}</div><div class="subtle">Tests: ${r.tests}</div></div><div class="fw-bold">Avg ${r.avg}</div>`;
-        wrap.appendChild(el);
+    }
+
+    function renderRankBoards(data){
+      const wrap = document.getElementById('rank-top');
+      const searchResEl = document.getElementById('rank-search-result');
+      if(!wrap) return;
+      const top = data.top || {};
+      const order = ['school','teacher','student','class','section'];
+      const titles = {school:'School-wise', teacher:'Teacher-wise', student:'Student-wise', class:'Class-wise', section:'Section-wise'};
+      wrap.innerHTML = '';
+      order.forEach(key=>{
+        const list = top[key] || [];
+        const col = document.createElement('div');
+        col.className='col-md-4';
+        col.innerHTML = `<div class="list-card"><div class="fw-semibold mb-2">${titles[key]||key}</div>${
+          list.length ? list.map((r,idx)=>`<div class="d-flex justify-content-between"><div>${idx+1}. ${r.name}</div><div class="subtle">Avg ${r.avg} | ${r.tests} tests</div></div>`).join('') : '<div class="subtle">No data</div>'
+        }</div>`;
+        wrap.appendChild(col);
       });
-      if(rows.length===0) wrap.innerHTML='<div class="subtle">No data yet.</div>';
+      if(searchResEl){
+        const sr = data.search;
+        if(sr){
+          searchResEl.innerHTML = `<div class="alert alert-info p-2 mb-0">Found in ${sr.type}: Rank ${sr.rank}/${sr.total} - ${sr.name || ''} (Avg ${sr.avg}, Tests ${sr.tests})</div>`;
+        }else if((document.getElementById('rank-search')?.value||'').trim()){
+          searchResEl.innerHTML = '<div class="subtle">No match found.</div>';
+        }else{
+          searchResEl.innerHTML = '';
+        }
+      }
+    }
+
+    function showStudentNames(names){
+      const list = Array.isArray(names) ? names.join(', ') : 'None';
+      alert(list || 'None');
     }
 
     function renderAnalytics(data, targetId){
       const wrap=document.getElementById(targetId);
       wrap.innerHTML='';
       if(!data) return;
+      const totalAttempts = data.total_attempts || 0;
       const header=document.createElement('div');
       header.className='list-card';
       header.innerHTML=`<div class="fw-semibold">Average ${data.average}</div><div class="subtle">Top ${data.top}</div>`;
@@ -1592,9 +1789,10 @@
         card.className='list-card';
         card.innerHTML = `<div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Single)</span><span class="subtle">(+1/0)</span></div><div class="mb-1">${q.q}</div>`;
         (q.counts||[]).forEach((c,i)=>{
+          const label = (q.opts||[])[i] || '';
           const optRow=document.createElement('div');
           optRow.className='d-flex justify-content-between';
-          optRow.innerHTML=`<span class="${q.correct===i?'text-success fw-semibold':''}" onclick="alert('Students: ${(c.students||[]).join(', ')||'None'}')">${String.fromCharCode(65+i)}. ${q.options[i]||''}</span><span class="subtle">${c.count||0} opted</span>`;
+          optRow.innerHTML=`<span class="${q.correct===i?'text-success fw-semibold':''}" onclick='showStudentNames(${JSON.stringify(c.students||[])})'>${String.fromCharCode(65+i)}. ${label}</span><span class="subtle">${c.count||0}/${totalAttempts||0}</span>`;
           card.appendChild(optRow);
         });
         wrap.appendChild(card);
@@ -1604,9 +1802,10 @@
         card.className='list-card';
         card.innerHTML = `<div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Multi)</span><span class="subtle">(+2/0)</span></div><div class="mb-1">${q.q}</div>`;
         (q.counts||[]).forEach((c,i)=>{
+          const label = (q.opts||[])[i] || '';
           const optRow=document.createElement('div');
           optRow.className='d-flex justify-content-between';
-          optRow.innerHTML=`<span class="${(q.correct||[]).includes(i)?'text-success fw-semibold':''}" onclick="alert('Students: ${(c.students||[]).join(', ')||'None'}')">${String.fromCharCode(65+i)}. ${q.options[i]||''}</span><span class="subtle">${c.count||0} opted</span>`;
+          optRow.innerHTML=`<span class="${(q.correct||[]).includes(i)?'text-success fw-semibold':''}" onclick='showStudentNames(${JSON.stringify(c.students||[])})'>${String.fromCharCode(65+i)}. ${label}</span><span class="subtle">${c.count||0}/${totalAttempts||0}</span>`;
           card.appendChild(optRow);
         });
         wrap.appendChild(card);
@@ -1636,6 +1835,13 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 

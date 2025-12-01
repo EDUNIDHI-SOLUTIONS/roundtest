@@ -1,7 +1,8 @@
 import csv
 import io
 import os
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone, date
 from typing import Dict, List, Tuple, Optional
 
 from bson import ObjectId
@@ -19,6 +20,7 @@ print("update test")
 
 client = MongoClient(app.config["MONGO_URI"])
 db = client["edunidhi_exams"]
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def ensure_default_admin() -> None:
@@ -164,6 +166,7 @@ def seed_minimal():
                 "answers_multi": [[0, 2]] * len(multi),
                 "score": 5,
                 "submitted_at": now_iso(),
+                "submitted_day_ist": day_in_ist(datetime.now(timezone.utc)),
             }
         )
 
@@ -187,7 +190,72 @@ def require_role(roles: List[str]):
 
 
 def now_iso() -> str:
-    return datetime.utcnow().isoformat()
+    """Return an ISO timestamp in UTC with offset for consistent parsing on the client."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def parse_ts(value: Optional[str]) -> Optional[datetime]:
+    """Parse a timestamp string into a UTC datetime.
+
+    - Accepts ISO strings with or without offset.
+    - Falls back to common datetime formats.
+    - Treats naive timestamps as IST (legacy data saved without offset).
+    """
+    if not value:
+        return None
+    # If already a datetime, normalize it
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        dt = None
+    # primary: ISO parser
+    if dt is None:
+        try:
+            raw = str(value)
+            # handle trailing Z (common ISO export)
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            dt = datetime.fromisoformat(raw)
+        except Exception:
+            dt = None
+    # fallbacks for non-ISO strings
+    if dt is None:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M:%S"):
+            try:
+                dt = datetime.strptime(str(value), fmt)
+                break
+            except Exception:
+                continue
+    if dt is None:
+        return None
+    # treat naive as IST (legacy data), then convert to UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=IST)
+    return dt.astimezone(timezone.utc)
+
+
+def iso_utc(dt: datetime) -> str:
+    """Serialize a datetime to UTC ISO string with offset."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat()
+
+
+def day_in_ist(dt: datetime) -> str:
+    """Return YYYY-MM-DD string for the given datetime in IST."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt_ist = dt.astimezone(IST)
+    return dt_ist.strftime("%Y-%m-%d")
+
+
+def submitted_day_ist_from_str(ts: Optional[str]) -> Optional[str]:
+    dt = parse_ts(ts)
+    if not dt:
+        return None
+    return day_in_ist(dt)
 
 
 def score_submission(test_doc: dict, answers_single: List, answers_multi: List) -> Tuple[int, list, list]:
@@ -258,8 +326,8 @@ def score_submission(test_doc: dict, answers_single: List, answers_multi: List) 
             {
                 "q": q.get("q"),
                 "options": opts,
-                "correct": list(correct_set),
-                "submitted": list(submitted_set),
+                "correct": sorted(list(correct_set)),
+                "submitted": sorted(list(submitted_set)),
                 "is_correct": is_ok,
             }
         )
@@ -907,7 +975,14 @@ def admin_test_live():
         duration = 10
     start_time = data.get("start_time")
     try:
-        start_dt = datetime.fromisoformat(start_time) if start_time else datetime.utcnow()
+        # Allow scheduling with an explicit start_time; treat naive inputs as IST-local then convert to UTC.
+        if start_time:
+            parsed = datetime.fromisoformat(start_time)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=IST)
+            start_dt = parsed.astimezone(timezone.utc)
+        else:
+            start_dt = datetime.now(timezone.utc)
     except Exception:
         return jsonify({"error": "Invalid start_time"}), 400
     if not test_id or not class_name or not section:
@@ -921,7 +996,7 @@ def admin_test_live():
             "class": class_name,
             "section": section,
             "duration": duration,
-            "start_time": start_dt.isoformat(),
+            "start_time": iso_utc(start_dt),
         }
     )
     return jsonify({"status": "ok", "test_live_id": str(inserted.inserted_id)})
@@ -1234,6 +1309,23 @@ def admin_test_recalc():
     return jsonify({"status": "ok", "message": "Scores recalculated"})
 
 
+@app.post("/admin/backfill-submitted-day")
+def admin_backfill_submitted_day():
+    ok, resp, code = require_role(["admin"])
+    if not ok:
+        return resp, code
+    updated = 0
+    for r in db.responses.find({"submitted_at": {"$exists": True}}):
+        if r.get("submitted_day_ist"):
+            continue
+        day = submitted_day_ist_from_str(r.get("submitted_at"))
+        if not day:
+            continue
+        db.responses.update_one({"_id": r["_id"]}, {"$set": {"submitted_day_ist": day}})
+        updated += 1
+    return jsonify({"status": "ok", "updated": updated})
+
+
 @app.get("/teacher/tests")
 def teacher_tests():
     ok, resp, code = require_role(["teacher"])
@@ -1266,16 +1358,13 @@ def live_now(live_doc: dict) -> bool:
     """Return whether a live test is currently within its scheduled window."""
     start = live_doc.get("start_time")
     duration = int(live_doc.get("duration", 0) or 0)
-    try:
-        start_dt = datetime.fromisoformat(start) if start else None
-    except Exception:
-        start_dt = None
+    start_dt = parse_ts(start)
     if not start_dt:
-        start_dt = datetime.utcnow()
+        start_dt = datetime.now(timezone.utc)
     if duration <= 0:
         return False
     end_dt = start_dt + timedelta(minutes=duration)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     return start_dt <= now <= end_dt
 
 
@@ -1284,18 +1373,40 @@ def is_time_over(tl: dict, started_at: Optional[str]) -> bool:
     duration = int(tl.get("duration", 0) or 0)
     if duration <= 0:
         return False
-    try:
-        base = datetime.fromisoformat(started_at) if started_at else None
-    except Exception:
-        base = None
+    base = parse_ts(started_at)
     if not base:
-        try:
-            base = datetime.fromisoformat(tl.get("start_time"))
-        except Exception:
-            base = None
+        base = parse_ts(tl.get("start_time"))
     if not base:
         return False
-    return datetime.utcnow() > base + timedelta(minutes=duration)
+    return datetime.now(timezone.utc) > base + timedelta(minutes=duration)
+
+
+def assigned_students_count(tl: Optional[dict]) -> int:
+    """Return total students assigned to a live test based on class/section targeting."""
+    if not tl:
+        return 0
+    query = {"archived": {"$ne": True}}
+    if tl.get("class"):
+        query["class"] = tl.get("class")
+    if tl.get("section"):
+        query["section"] = tl.get("section")
+    return db.students.count_documents(query)
+
+
+def rank_snapshot(tl: Optional[dict], test_live_id: str, student_id: str) -> Tuple[Optional[int], int, int, float]:
+    """Return (rank, total_candidates, submitted_total, class_average) for a student on a live test."""
+    submitted = list(
+        db.responses.find({"test_live_id": test_live_id, "submitted_at": {"$exists": True}})
+    )
+    scores = [r.get("score", 0) for r in submitted]
+    class_avg = round(sum(scores) / len(scores), 2) if scores else 0
+    sorted_scores = sorted(
+        submitted, key=lambda r: (-r.get("score", 0), r.get("submitted_at", ""))
+    )
+    rank = next((i + 1 for i, r in enumerate(sorted_scores) if r.get("student_id") == student_id), None)
+    assigned_total = assigned_students_count(tl)
+    total_candidates = max(assigned_total, len(sorted_scores))
+    return rank, total_candidates, len(sorted_scores), class_avg
 
 
 @app.get("/student/live")
@@ -1401,6 +1512,7 @@ def student_submit():
     data = get_json()
     test_live_id = data.get("test_live_id")
     answers = data.get("answers", [])
+    auto = bool(data.get("auto"))
     sid = session.get("user_id")
     tl = db.tests_live.find_one({"_id": oid(test_live_id)})
     if not tl:
@@ -1481,7 +1593,6 @@ def student_submit():
     ).get("started_at")
     if is_time_over(tl, started_at):
         return jsonify({"error": "time_over"}), 400
-    auto = False
 
     score, sol_single, sol_multi = score_submission(test_doc, single_ans, multi_ans)
     total_marks = max_score(test_doc)
@@ -1496,23 +1607,14 @@ def student_submit():
                 "answers_multi": multi_ans,
                 "score": score,
                 "submitted_at": now_iso(),
+                "submitted_day_ist": day_in_ist(datetime.now(timezone.utc)),
                 "auto_submitted": auto,
             }
         },
         upsert=True,
     )
 
-    all_res = list(
-        db.responses.find({"test_live_id": test_live_id, "submitted_at": {"$exists": True}})
-    )
-    scores = [r.get("score", 0) for r in all_res]
-    class_avg = round(sum(scores) / len(scores), 2) if scores else 0
-    sorted_scores = sorted(
-        all_res, key=lambda r: (-r.get("score", 0), r.get("submitted_at", ""))
-    )
-    rank = next(
-        (i + 1 for i, r in enumerate(sorted_scores) if r.get("student_id") == sid), None
-    )
+    rank, total_candidates, submitted_total, class_avg = rank_snapshot(tl, test_live_id, sid)
 
     return jsonify(
         {
@@ -1520,7 +1622,9 @@ def student_submit():
             "score": score,
             "max_score": total_marks,
             "rank": rank,
-            "total": len(sorted_scores),
+            "total": total_candidates,
+            "total_candidates": total_candidates,
+            "submitted_total": submitted_total,
             "class_average": class_avg,
             "solutions": {"single": sol_single, "multi": sol_multi},
         }
@@ -1543,6 +1647,7 @@ def student_history():
         )
         if test_doc and test_doc.get("archived"):
             continue
+        rank, total_candidates, submitted_total, class_avg = rank_snapshot(tl, r.get("test_live_id"), sid)
         results.append(
             {
                 "test_live_id": r.get("test_live_id"),
@@ -1550,6 +1655,12 @@ def student_history():
                 "subject": test_doc.get("subject", "General") if test_doc else "",
                 "score": r.get("score", 0),
                 "submitted_at": r.get("submitted_at"),
+                "submitted_day_ist": r.get("submitted_day_ist") or submitted_day_ist_from_str(r.get("submitted_at")),
+                "max_score": max_score(test_doc) if test_doc else 20,
+                "rank": rank,
+                "total_candidates": total_candidates,
+                "submitted_total": submitted_total,
+                "class_average": class_avg,
             }
         )
     return jsonify({"results": results})
@@ -1573,23 +1684,16 @@ def student_result(test_live_id):
     score, sol_single, sol_multi = score_submission(
         test_doc, r.get("answers_single", []), r.get("answers_multi", [])
     )
-    all_res = list(db.responses.find({"test_live_id": test_live_id}))
-    scores = [item.get("score", 0) for item in all_res]
-    class_avg = round(sum(scores) / len(scores), 2) if scores else 0
-    sorted_scores = sorted(
-        all_res, key=lambda x: (-x.get("score", 0), x.get("submitted_at", ""))
-    )
-    rank = next(
-        (i + 1 for i, item in enumerate(sorted_scores) if item.get("student_id") == sid),
-        None,
-    )
+    rank, total_candidates, submitted_total, class_avg = rank_snapshot(tl, test_live_id, sid)
     total_marks = max_score(test_doc)
     return jsonify(
         {
             "score": score,
             "max_score": total_marks,
             "rank": rank,
-            "total": len(sorted_scores),
+            "total": total_candidates,
+            "total_candidates": total_candidates,
+            "submitted_total": submitted_total,
             "class_average": class_avg,
             "solutions": {"single": sol_single, "multi": sol_multi},
         }
@@ -1598,27 +1702,83 @@ def student_result(test_live_id):
 
 # -------- Reports / Leaderboards -------- #
 def date_filter_query(month: str = None, week: int = None, date_str: str = None):
-    if date_str:
+    """Return UTC date bounds for filtering (start, end). Accepts dd-mm-yyyy or yyyy-mm-dd."""
+
+    def _try_date(y: int, m: int, d: int) -> Optional[date]:
         try:
-            dt = datetime.fromisoformat(date_str)
-            start = datetime(dt.year, dt.month, dt.day)
-            end = start + timedelta(days=1)
-            return {"$gte": start.isoformat(), "$lt": end.isoformat()}
+            return date(y, m, d)
         except Exception:
             return None
+
+    def _parse_date(s: str) -> Optional[date]:
+        # normalize common separators
+        s_norm = s.replace("/", "-").strip()
+        # try ISO with time first
+        try:
+            raw = s_norm
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            dt_iso = datetime.fromisoformat(raw)
+            return dt_iso.date()
+        except Exception:
+            pass
+        # handle strings with time by splitting
+        if "T" in s_norm:
+            s_norm = s_norm.split("T", 1)[0]
+        if " " in s_norm:
+            s_norm = s_norm.split(" ", 1)[0]
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y"):
+            try:
+                return datetime.strptime(s_norm, fmt).date()
+            except ValueError:
+                continue
+        # regex fallback: grab 3 numeric parts and guess
+        parts = re.findall(r"\d+", s_norm)
+        if len(parts) >= 3:
+            a, b, c = parts[0], parts[1], parts[2]
+            nums = [int(a), int(b), int(c)]
+            # Prefer a 4-digit piece as year; otherwise pick the largest as year
+            year_idx = None
+            for idx, p in enumerate((a, b, c)):
+                if len(p) == 4:
+                    year_idx = idx
+                    break
+            if year_idx is None:
+                year_idx = nums.index(max(nums))
+            year = nums[year_idx]
+            # map remaining to month/day in both orders
+            md = [nums[i] for i in range(3) if i != year_idx]
+            candidates = []
+            if len(md) == 2:
+                candidates.append((md[0], md[1]))
+                candidates.append((md[1], md[0]))
+            for m, d in candidates:
+                # normalize 2-digit year to 2000+Y
+                y_val = year + 2000 if year < 100 else year
+                dt = _try_date(y_val, m, d)
+                if dt:
+                    return dt
+        return None
+
+    if date_str:
+        d = _parse_date(date_str.strip())
+        if not d:
+            return None
+        start = datetime(d.year, d.month, d.day, tzinfo=IST)
+        end = start + timedelta(days=1)
+        return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
     if month:
         try:
             dt = datetime.strptime(month + "-01", "%Y-%m-%d")
-            start = datetime(dt.year, dt.month, 1)
+            start = datetime(dt.year, dt.month, 1, tzinfo=IST)
             if dt.month == 12:
-                end = datetime(dt.year + 1, 1, 1)
+                end = datetime(dt.year + 1, 1, 1, tzinfo=IST)
             else:
-                end = datetime(dt.year, dt.month + 1, 1)
+                end = datetime(dt.year, dt.month + 1, 1, tzinfo=IST)
             if week:
-                # simple week buckets inside month
                 start = start + timedelta(days=7 * (week - 1))
                 end = start + timedelta(days=7)
-            return {"$gte": start.isoformat(), "$lt": end.isoformat()}
+            return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
         except Exception:
             return None
     return None
@@ -1650,16 +1810,41 @@ def leaderboard():
         test_doc = tests_map.get(tl.get("test_id"))
         if not test_doc:
             return False
-        if role == "teacher" and str(test_doc.get("teacher_id")) != session.get("user_id"):
-            return False
         stu = students_map.get(r.get("student_id"))
         if not stu:
             return False
         return True
 
-    filtered = [r for r in responses if allow_response(r)]
-    if not filtered:
+    filtered_all = [r for r in responses if allow_response(r)]
+    if not filtered_all:
         return jsonify({"top": {}, "search": None})
+
+    # optional date filter (uses IST day boundaries via helper)
+    date_param = request.args.get("date")
+    date_param_clean = date_param.strip() if date_param else ""
+    # Normalize common picker formats (take leading date portion if time is present)
+    if date_param_clean and len(date_param_clean) >= 10:
+        if "T" in date_param_clean:
+            date_param_clean = date_param_clean.split("T", 1)[0]
+        if " " in date_param_clean:
+            date_param_clean = date_param_clean.split(" ", 1)[0]
+        date_param_clean = date_param_clean.replace("/", "-")
+        date_param_clean = date_param_clean[:10]
+
+    # Filter primarily by submitted_day_ist to avoid timezone parsing issues
+    filtered = []
+    has_date_filter = False
+    if date_param_clean:
+        has_date_filter = True
+        target_day = date_param_clean
+        for r in filtered_all:
+            r_day = r.get("submitted_day_ist") or submitted_day_ist_from_str(r.get("submitted_at"))
+            if r_day == target_day:
+                filtered.append(r)
+    else:
+        filtered = filtered_all[:]
+
+    section_filter = (request.args.get("section_filter") or "").strip()
 
     def build_top(key_fn, name_fn):
         agg = {}
@@ -1704,6 +1889,19 @@ def leaderboard():
     top_student, all_student = build_top(key_student, lambda r, k: students_map.get(k, {}).get("name", "Student"))
     top_teacher, all_teacher = build_top(key_teacher, lambda r, k: teachers_map.get(k, {}).get("name", "Teacher"))
 
+    # enrich student rows with class-section to avoid duplicate name formatting on the UI
+    def add_class_section(rows: list):
+        for item in rows:
+            stu = students_map.get(item.get("id"))
+            if not stu:
+                continue
+            cls = stu.get("class") or ""
+            sec = stu.get("section") or ""
+            item["class_section"] = f"{cls}-{sec}".strip("-")
+
+    add_class_section(top_student)
+    add_class_section(all_student)
+
     search_q = (request.args.get("q") or "").strip().lower()
     search_res = None
     if search_q:
@@ -1721,15 +1919,94 @@ def leaderboard():
             or find_rank(all_school, "school")
         )
 
+    # student table when date + section provided
+    student_table = []
+    if has_date_filter and section_filter:
+        try:
+            cls_name, sec_name = section_filter.split("-", 1)
+        except ValueError:
+            cls_name, sec_name = "", ""
+        # filter for that section on the selected date
+        section_resps = []
+        for r in filtered:
+            stu = students_map.get(r.get("student_id"))
+            if not stu:
+                continue
+            if (stu.get("class") or "") == cls_name and (stu.get("section") or "") == sec_name:
+                section_resps.append(r)
+
+        # precompute per-student overall avg from all filtered_all
+        overall_stats = {}
+        for r in filtered_all:
+            sid = r.get("student_id")
+            if not sid:
+                continue
+            stat = overall_stats.setdefault(sid, {"sum": 0, "count": 0})
+            stat["sum"] += r.get("score", 0)
+            stat["count"] += 1
+
+        by_student = {}
+        for r in section_resps:
+            sid = r.get("student_id")
+            if sid not in students_map:
+                continue
+            st = by_student.setdefault(sid, {"tests": [], "score_sum": 0, "count": 0})
+            st["score_sum"] += r.get("score", 0)
+            st["count"] += 1
+            tl = tests_live_map.get(r.get("test_live_id") or "")
+            test_doc = tests_map.get(tl.get("test_id")) if tl else None
+            subj = (test_doc.get("subject") if test_doc else None) or "General"
+            st["tests"].append({"subject": subj, "score": r.get("score", 0)})
+
+        for sid, st in by_student.items():
+            stu = students_map.get(sid, {})
+            overall = overall_stats.get(sid, {})
+            overall_avg = round(overall.get("sum", 0) / overall.get("count", 1), 2) if overall else 0
+            today_avg = round(st["score_sum"] / st["count"], 2) if st["count"] else 0
+            student_table.append(
+                {
+                    "rank": 0,  # filled after sort
+                    "student_id": sid,
+                    "name": stu.get("name", "Student"),
+                    "class_section": f"{stu.get('class')}-{stu.get('section')}",
+                    "today_avg": today_avg,
+                    "tests": st["tests"][:2],
+                    "overall_avg": overall_avg,
+                    "today_tests_count": st["count"],
+                }
+            )
+        student_table.sort(key=lambda x: (-x["today_avg"], -x["today_tests_count"], x["name"]))
+        for idx, row in enumerate(student_table, 1):
+            row["rank"] = idx
+
+    sections_with_data = sorted(
+        {
+            f"{students_map.get(r.get('student_id'), {}).get('class')}-{students_map.get(r.get('student_id'), {}).get('section')}"
+            for r in filtered
+            if r.get("student_id") in students_map
+        }
+    )
+
+    payload_all = {
+        "school": all_school,
+        "class": all_class,
+        "section": all_section,
+        "student": all_student,
+        "teacher": all_teacher,
+    }
+
     return jsonify(
         {
             "top": {
                 "school": top_school,
                 "class": top_class,
-                "section": top_section,
-                "student": top_student,
-                "teacher": top_teacher,
+            "section": top_section,
+            "student": top_student,
+            "teacher": top_teacher,
             },
+            "all": payload_all if role in ["admin", "teacher"] else None,
+            "sections_with_data": sections_with_data,
+            "student_table": student_table,
             "search": search_res,
         }
     )

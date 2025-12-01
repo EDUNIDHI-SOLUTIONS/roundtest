@@ -15,6 +15,7 @@ DEFAULT_URI = (
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me")
 app.config["MONGO_URI"] = os.environ.get("MONGO_URI", DEFAULT_URI)
+print("update test")
 
 client = MongoClient(app.config["MONGO_URI"])
 db = client["edunidhi_exams"]

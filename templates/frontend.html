@@ -390,7 +390,9 @@
                 <th>Test Name</th>
                 <th>Subject</th>
                 <th>Date Attempted</th>
-                <th>Score</th>
+                <th>Score (/20)</th>
+                <th>Rank</th>
+                <th>Total Candidates</th>
                 <th>View</th>
               </tr>
             </thead>
@@ -401,15 +403,38 @@
 
       <div id="rank-area" class="section-hidden">
         <div class="glass-card mt-3">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <div class="section-title mb-0">Top performers</div>
-            <div class="d-flex gap-2">
-              <input class="form-control form-control-sm" style="width: 220px;" id="rank-search" placeholder="Search student/teacher/class">
-              <button class="btn btn-sm btn-accent" onclick="loadRankBoards()">Search</button>
+          <div class="d-flex flex-wrap justify-content-between align-items-start mb-2 gap-2">
+            <div>
+              <div class="section-title mb-1">Top performers</div>
+              <div class="subtle">Which report do you want?</div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <input class="form-control form-control-sm" style="width: 220px;" id="rank-search" placeholder="Search student/teacher/class (auto)" />
+              <div class="d-flex gap-1 align-items-center">
+                <input type="date" class="form-control form-control-sm" style="width: 160px;" id="rank-date-filter" placeholder="All dates" />
+                <button class="btn btn-sm btn-outline-secondary" type="button" id="rank-clear-date">All dates</button>
+              </div>
+              <select class="form-select form-select-sm" style="width: 190px;" id="rank-section-filter">
+                <option value="">All sections (student view)</option>
+              </select>
             </div>
           </div>
-          <div id="rank-top" class="row g-3"></div>
+          <div class="btn-group btn-group-sm flex-wrap w-100 mb-2" role="group" aria-label="Report type">
+            <button type="button" class="btn btn-outline-primary rank-type" data-view="school">School Wise</button>
+            <button type="button" class="btn btn-outline-primary rank-type" data-view="class">Class Wise</button>
+            <button type="button" class="btn btn-outline-primary rank-type" data-view="section">Section Wise</button>
+            <button type="button" class="btn btn-outline-primary rank-type" data-view="teacher">Teacher Wise</button>
+            <button type="button" class="btn btn-outline-primary rank-type" data-view="student">Student Wise</button>
+          </div>
+          <select id="rank-view" class="d-none">
+            <option value="school">school</option>
+            <option value="class">class</option>
+            <option value="section">section</option>
+            <option value="teacher">teacher</option>
+            <option value="student">student</option>
+          </select>
           <div id="rank-search-result" class="mt-2"></div>
+          <div id="rank-top" class="row g-3"></div>
         </div>
       </div>
     </div>
@@ -722,6 +747,15 @@
         return '';
       }
     }
+    function fmt20(val, precision=2){
+      if(val===0 || val){ 
+        const num = Number(val);
+        if(Number.isNaN(num)) return '-';
+        const fixed = Number.isInteger(num) ? num : num.toFixed(precision);
+        return `${fixed}/20`;
+      }
+      return '-';
+    }
 
     async function api(url, options={}) {
       const res = await fetch(url, { credentials:'include', headers:{ 'Content-Type':'application/json', ...(options.headers||{}) }, ...options });
@@ -856,13 +890,13 @@
       } else if(role==='teacher'){
         document.getElementById('info-line-left').innerHTML = `Teacher: <b>${name||''}</b>`;
       } else if(role==='admin'){
-        document.getElementById('info-line-left').innerHTML = `Admin: <b>${name||''}</b>`;
+      document.getElementById('info-line-left').innerHTML = `Admin: <b>${name||''}</b>`;
       }
       document.getElementById('admin-area').classList.toggle('section-hidden', role!=='admin');
       document.getElementById('teacher-area').classList.toggle('section-hidden', role!=='teacher');
       document.getElementById('student-area').classList.toggle('section-hidden', role!=='student');
       document.getElementById('rank-area').classList.toggle('section-hidden', !(role==='admin' || role==='teacher'));
-      if (role === 'admin') loadAdmin();
+      if (role === 'admin') { loadAdmin(); loadRankBoards(); }
       if (role === 'teacher') { loadSubjects().then(()=>resetBuilder()); loadTeacherTests(); loadRankBoards(); }
       if (role === 'student') loadStudent();
     }
@@ -1533,11 +1567,14 @@
       wrap.innerHTML='';
       (data.results||[]).forEach(r=>{
         const row=document.createElement('tr');
-        row.innerHTML=`<td>${r.title}</td><td>${r.subject||''}</td><td>${formatIST(r.submitted_at) || ''}</td><td>${r.score}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="viewResult('${r.test_live_id}')">View</button></td>`;
+        const maxScore = r.max_score || 20;
+        const scoreText = maxScore===20 ? fmt20(r.score,1) : `${r.score}/${maxScore}`;
+        const rankText = (r.rank && r.total_candidates) ? `${r.rank}/${r.total_candidates}` : '-';
+        row.innerHTML=`<td>${r.title}</td><td>${r.subject||''}</td><td>${formatIST(r.submitted_at) || ''}</td><td>${scoreText}</td><td>${rankText}</td><td>${r.total_candidates||'-'}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="viewResult('${r.test_live_id}')">View</button></td>`;
         wrap.appendChild(row);
       });
       if((data.results||[]).length===0){
-        wrap.innerHTML='<tr><td colspan="5" class="subtle">No attempts yet.</td></tr>';
+        wrap.innerHTML='<tr><td colspan="7" class="subtle">No attempts yet.</td></tr>';
       }
     }
 
@@ -1553,7 +1590,7 @@
         test_live_id: tlid,
         title: data.title,
         duration: data.duration || 10,
-        started_at: new Date().toISOString(), // give each open a fresh timer client-side
+        started_at: data.started_at || new Date().toISOString(), // use server start to align timers
         questions,
         idx:0,
         answers: {}
@@ -1611,14 +1648,13 @@
       if(state.exam.idx === state.exam.questions.length-1){ submitExam(); }
       else { state.exam.idx++; renderQuestion(); }
     };
-    // Allow submit anytime via keyboard overlay (spare submit button)
-    document.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && state.exam){ e.preventDefault(); submitExam(); }});
 
     function startTimer(){
       if(state.exam.timer) clearInterval(state.exam.timer);
       let durationMs = Number(state.exam.duration||0) * 60 * 1000;
       if(!durationMs || isNaN(durationMs) || durationMs <= 0) durationMs = 10*60*1000;
-      const started = state.exam.started_at ? new Date(state.exam.started_at) : new Date();
+      const baseStart = state.exam.started_at ? new Date(state.exam.started_at) : new Date();
+      const started = isNaN(baseStart) ? new Date() : baseStart;
       function tick(){
         const elapsed = Date.now() - started.getTime();
         const remaining = durationMs - elapsed;
@@ -1636,7 +1672,7 @@
       clearInterval(ex.timer);
       const answers = Object.entries(ex.answers).map(([id,selected])=>({id,selected}));
       try{
-        const resp = await api('/student/submit',{method:'POST',body:JSON.stringify({test_live_id:ex.test_live_id, answers})});
+        const resp = await api('/student/submit',{method:'POST',body:JSON.stringify({test_live_id:ex.test_live_id, answers, auto})});
         renderResult(resp);
         showToast(auto?'Time up. Auto-submitted.':'Submitted','success');
       }catch(err){ showToast(err.message,'danger'); }
@@ -1645,19 +1681,47 @@
     function renderResult(data){
       const container = document.getElementById('exam-result');
       const maxScore = data.max_score || ((data.solutions?.single?.length||0) + 2 * (data.solutions?.multi?.length||0)) || 20;
-      const rankText = data.rank ? `Rank ${data.rank}/${data.total||''}` : 'Rank -';
+      const totalCandidates = data.total || data.total_candidates || data.submitted_total;
+      const rankText = (data.rank && totalCandidates) ? `Rank ${data.rank}/${totalCandidates}` : 'Rank -';
+      const classAvgText = fmt20(data.class_average ?? null, 2);
       const single = (data.solutions?.single||[]).map((q,idx)=>{
-        const opts = q.options.map((o,i)=>`<div class="d-flex justify-content-between ${q.correct===i?'text-success fw-semibold':''} ${q.submitted===i&&!q.is_correct?'text-danger':''}"><span>${String.fromCharCode(65+i)}. ${o}</span><span class="subtle">${q.correct===i?'Correct':''}${q.submitted===i&&!q.is_correct?' (Your choice)':''}</span></div>`).join('');
-        return `<div class="list-card mb-2"><div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Single) </span><span class="subtle">(+1/0)</span></div><div class="mb-1">${q.q}</div>${opts}</div>`;
+        const opts = (q.options||[]).map((o,i)=>{
+          const isCorrect = Number(q.correct)===i;
+          const isSelected = q.submitted===i;
+          const classes = ['d-flex','justify-content-between','align-items-center'];
+          if(isCorrect) classes.push('text-success','fw-semibold');
+          if(isSelected && !isCorrect) classes.push('text-danger');
+          const tags = [];
+          if(isSelected) tags.push('Your choice');
+          if(isCorrect) tags.push('Correct');
+          return `<div class="${classes.join(' ')}"><span>${String.fromCharCode(65+i)}. ${o}</span><span class="subtle">${tags.join(' • ')}</span></div>`;
+        }).join('');
+        const your = (q.submitted===0 || q.submitted) ? String.fromCharCode(65+q.submitted) : 'Not answered';
+        const correct = (q.correct===0 || q.correct) ? String.fromCharCode(65+q.correct) : '-';
+        return `<div class="list-card mb-2"><div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Single) </span><span class="subtle">(+1/0)</span></div><div class="mb-1">${q.q}</div>${opts}<div class="small-info mt-1">Your choice: <b>${your}</b> | Correct: <b>${correct}</b></div></div>`;
       }).join('');
       const multi = (data.solutions?.multi||[]).map((q,idx)=>{
-        const opts = q.options.map((o,i)=>`<div class="d-flex justify-content-between ${q.correct.includes(i)?'text-success fw-semibold':''} ${q.submitted.includes(i)&&!q.correct.includes(i)?'text-danger':''}"><span>${String.fromCharCode(65+i)}. ${o}</span><span class="subtle">${q.correct.includes(i)?'Correct':''}${q.submitted.includes(i)&&!q.correct.includes(i)?' (Your choice)':''}</span></div>`).join('');
-        return `<div class="list-card mb-2"><div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Multi)</span><span class="subtle">(+2/0)</span></div><div class="mb-1">${q.q}</div>${opts}</div>`;
+        const submitted = Array.isArray(q.submitted) ? q.submitted : [];
+        const correctList = Array.isArray(q.correct) ? q.correct : [];
+        const opts = (q.options||[]).map((o,i)=>{
+          const isCorrect = correctList.includes(i);
+          const isSelected = submitted.includes(i);
+          const classes = ['d-flex','justify-content-between','align-items-center'];
+          if(isCorrect) classes.push('text-success','fw-semibold');
+          if(isSelected && !isCorrect) classes.push('text-danger');
+          const tags = [];
+          if(isSelected) tags.push('Your choice');
+          if(isCorrect) tags.push('Correct');
+          return `<div class="${classes.join(' ')}"><span>${String.fromCharCode(65+i)}. ${o}</span><span class="subtle">${tags.join(' • ')}</span></div>`;
+        }).join('');
+        const your = submitted.length ? submitted.map(i=>String.fromCharCode(65+i)).join(', ') : 'None';
+        const correct = correctList.length ? correctList.map(i=>String.fromCharCode(65+i)).join(', ') : 'None';
+        return `<div class="list-card mb-2"><div class="fw-semibold d-flex justify-content-between"><span>Q${idx+1} (Multi)</span><span class="subtle">(+2/0)</span></div><div class="mb-1">${q.q}</div>${opts}<div class="small-info mt-1">Your choices: <b>${your}</b> | Correct: <b>${correct}</b></div></div>`;
       }).join('');
       container.innerHTML = `
         <div class="glass-card mb-3 text-center">
           <div class="score-banner">${data.score} / ${maxScore}</div>
-          <div class="subtle">${rankText} | Class avg ${data.class_average||0}</div>
+          <div class="subtle">${rankText} | Class avg ${classAvgText}</div>
         </div>
         ${single}${multi}
       `;
@@ -1701,9 +1765,9 @@
         const delta = typeof r.delta==='number'
           ? (r.delta>0? `-${Math.abs(r.delta)}` : r.delta<0? `+${Math.abs(r.delta)}` : '0')
           : '';
-        const grp = (r.group_average ?? '-');
-        const mine = (r.my_average ?? '-');
-        const top = (r.top_average ?? '-');
+        const grp = fmt20(r.group_average);
+        const mine = fmt20(r.my_average);
+        const top = fmt20(r.top_average);
         return `<div class="list-card summary-card">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-semibold">${r.level}</div>
@@ -1726,14 +1790,43 @@
 
 
 
+    function setRankView(view='student'){
+      const viewEl = document.getElementById('rank-view');
+      if(viewEl) viewEl.value = view;
+      document.querySelectorAll('.rank-type').forEach(btn=>{
+        const active = btn.dataset.view === view;
+        btn.classList.toggle('btn-primary', active);
+        btn.classList.toggle('btn-outline-primary', !active);
+      });
+      const sectionSel = document.getElementById('rank-section-filter');
+      if(sectionSel){
+        sectionSel.disabled = view !== 'student';
+        sectionSel.classList.toggle('opacity-50', view !== 'student');
+      }
+    }
+
+    function setRankDefaults(){
+      setRankView('student');
+    }
+
     async function loadRankBoards(){
       const wrap = document.getElementById('rank-top');
       const searchResEl = document.getElementById('rank-search-result');
+      if(!state.role){ if(wrap) wrap.innerHTML=''; if(searchResEl) searchResEl.innerHTML=''; return; }
       if(wrap) wrap.innerHTML = '<div class="subtle">Loading...</div>';
       const q = document.getElementById('rank-search')?.value || '';
-      const params = q ? `?q=${encodeURIComponent(q)}` : '';
+      const selectedView = document.getElementById('rank-view')?.value || 'student';
+      const sec = selectedView==='student' ? (document.getElementById('rank-section-filter')?.value || '') : '';
+      const dt = document.getElementById('rank-date-filter')?.value || '';
+      const sp = new URLSearchParams();
+      if(q) sp.set('q', q);
+      if(sec) sp.set('section_filter', sec);
+      if(dt) sp.set('date', dt);
+      const params = sp.toString() ? `?${sp.toString()}` : '';
       try{
         const data = await api(`/reports/leaderboard${params}`);
+        window._latestRankData = data;
+        applySectionFilterOptions(data);
         renderRankBoards(data);
       }catch(err){
         if(wrap) wrap.innerHTML = `<div class="subtle">${err.message}</div>`;
@@ -1741,28 +1834,102 @@
       }
     }
 
+    function applySectionFilterOptions(data){
+      const el=document.getElementById('rank-section-filter');
+      if(!el) return;
+      const selectedView = document.getElementById('rank-view')?.value || 'student';
+      if(selectedView!=='student'){
+        el.innerHTML = '<option value=\"\">All sections (student view)</option>';
+        el.value='';
+        el.disabled = true;
+        return;
+      }
+      el.disabled = false;
+      const prev = el.value;
+      const sections = Array.isArray(data.sections_with_data) && data.sections_with_data.length
+        ? data.sections_with_data
+        : [];
+      const options = ['<option value=\"\">All sections (for student view)</option>'].concat(sections.map(s=>`<option value=\"${s}\">${s.replace('-', ' - ')}</option>`));
+      el.innerHTML = options.join('');
+      if(prev && sections.includes(prev)) el.value = prev;
+    }
+
     function renderRankBoards(data){
       const wrap = document.getElementById('rank-top');
       const searchResEl = document.getElementById('rank-search-result');
       if(!wrap) return;
-      const top = data.top || {};
-      const order = ['school','teacher','student','class','section'];
+      const top = ((state.role==='admin' || state.role==='teacher') && data.all) ? data.all : (data.top||{});
       const titles = {school:'School-wise', teacher:'Teacher-wise', student:'Student-wise', class:'Class-wise', section:'Section-wise'};
       wrap.innerHTML = '';
-      order.forEach(key=>{
-        const list = top[key] || [];
+      const selected = document.getElementById('rank-view')?.value || 'student';
+      const title = titles[selected] || selected;
+      const dtSelected = document.getElementById('rank-date-filter')?.value;
+      const secSelected = document.getElementById('rank-section-filter')?.value;
+      const searchTerm = (document.getElementById('rank-search')?.value||'').trim();
+      const stripClassSection = (name, cs) => {
+        if(!name) return '';
+        let display = name;
+        if(cs && display.toLowerCase().includes(cs.toLowerCase())){
+          display = display.replace(cs,'').replace(cs.replace('-', ' '),'');
+        }
+        display = display.replace(/\(\s*\)/,'').replace(/\s+-\s*$/,'').trim();
+        return display || name;
+      };
+      if(selected==='student'){
+        if(!dtSelected || !secSelected){
+          const list = top[selected] || [];
+          const table = list.length ? `<div class="table-responsive"><table class="table table-dark table-striped table-bordered align-middle mb-0">
+            <thead><tr><th>Rank</th><th>Name</th><th>Class-Section</th><th>Overall Average (/20)</th></tr></thead>
+            <tbody>${list.map((r,idx)=>{
+              const cs = r.class_section || '';
+              const displayName = stripClassSection(r.name||'', cs);
+              return `<tr><td>${idx+1}</td><td>${displayName}</td><td>${cs}</td><td>${fmt20(r.avg)}</td></tr>`;
+            }).join('')}</tbody>
+          </table></div>` : '<div class="subtle">No data</div>';
+          wrap.innerHTML = `<div class="col-12"><div class="list-card"><div class="fw-semibold mb-2">${title}</div>${table}</div></div>`;
+        } else if(Array.isArray(data.student_table)){
+          const rows = data.student_table || [];
+          const subjects = [];
+          rows.forEach(r=>{
+            (r.tests||[]).forEach(t=>{
+              if(subjects.length<2 && t?.subject && !subjects.includes(t.subject)) subjects.push(t.subject);
+            });
+          });
+          const header = `<div class="fw-semibold mb-2">${title}${dtSelected?` • ${dtSelected}`:''}${secSelected?` • ${secSelected.replace('-', ' - ')}`:''}</div>`;
+          const subjHeaders = subjects.map(s=>`<th>${s}</th>`).join('');
+          const colSpan = subjects.length + 5;
+          const bodyRows = rows.length ? rows.map(r=>{
+            const tests = r.tests||[];
+            const scoreBySubject = {};
+            tests.forEach(t=>{ if(t?.subject) scoreBySubject[t.subject]=t.score; });
+            const cells = subjects.map(subj=>`<td>${fmt20(scoreBySubject[subj])}</td>`).join('');
+            const cs = r.class_section || '';
+            const displayName = stripClassSection(r.name||'', cs);
+            return `<tr><td>${r.rank}</td><td>${displayName}</td><td>${cs}</td><td>${fmt20(r.today_avg)}</td>${cells}<td>${fmt20(r.overall_avg)}</td></tr>`;
+          }).join('') : `<tr><td colspan="${colSpan}" class="subtle">No data</td></tr>`;
+          const table = `<div class="table-responsive"><table class="table table-dark table-striped table-bordered align-middle mb-0">
+            <thead><tr><th>Rank</th><th>Student Name</th><th>Class-Section</th><th>Today's Average (/20)</th>${subjHeaders}<th>Overall Average (/20)</th></tr></thead>
+            <tbody>${bodyRows}</tbody></table></div>`;
+          wrap.innerHTML = `<div class="col-12"><div class="list-card">${header}${table}</div></div>`;
+        } else {
+          wrap.innerHTML = '<div class="col-12"><div class="list-card"><div class="subtle">No data</div></div></div>';
+        }
+      }else{
+        const list = top[selected] || [];
         const col = document.createElement('div');
-        col.className='col-md-4';
-        col.innerHTML = `<div class="list-card"><div class="fw-semibold mb-2">${titles[key]||key}</div>${
-          list.length ? list.map((r,idx)=>`<div class="d-flex justify-content-between"><div>${idx+1}. ${r.name}</div><div class="subtle">Avg ${r.avg} | ${r.tests} tests</div></div>`).join('') : '<div class="subtle">No data</div>'
+        col.className='col-12';
+        col.innerHTML = `<div class="list-card"><div class="fw-semibold mb-2">${title}</div>${
+          list.length ? list.map((r,idx)=>`<div class="d-flex justify-content-between"><div>${idx+1}. ${r.name}</div><div class="subtle">Avg ${fmt20(r.avg,2)} | ${r.tests} tests</div></div>`).join('') : '<div class="subtle">No data</div>'
         }</div>`;
         wrap.appendChild(col);
-      });
+      }
       if(searchResEl){
         const sr = data.search;
         if(sr){
-          searchResEl.innerHTML = `<div class="alert alert-info p-2 mb-0">Found in ${sr.type}: Rank ${sr.rank}/${sr.total} - ${sr.name || ''} (Avg ${sr.avg}, Tests ${sr.tests})</div>`;
-        }else if((document.getElementById('rank-search')?.value||'').trim()){
+          const prefix = sr.type==='student' ? 'Found in student' : `Found in ${sr.type}`;
+          const testsTxt = sr.tests ? `, Tests ${sr.tests}` : '';
+          searchResEl.innerHTML = `<div class="alert alert-info p-2 mb-0">${prefix}: Rank ${sr.rank}/${sr.total} – ${sr.name || ''} (Avg ${fmt20(sr.avg)}${testsTxt})</div>`;
+        }else if(searchTerm){
           searchResEl.innerHTML = '<div class="subtle">No match found.</div>';
         }else{
           searchResEl.innerHTML = '';
@@ -1831,11 +1998,25 @@
     document.addEventListener('DOMContentLoaded', ()=>{
       document.querySelectorAll('.modal-sheet').forEach(m=>{ m.classList.remove('show'); m.style.display='none'; });
       resetBuilder();
+      setRankDefaults();
+      document.getElementById('rank-view')?.addEventListener('change', (e)=>{ setRankView(e.target.value); loadRankBoards(); });
+      document.querySelectorAll('.rank-type').forEach(btn=>{
+        btn.addEventListener('click', ()=>{ setRankView(btn.dataset.view); loadRankBoards(); });
+      });
+      document.getElementById('rank-section-filter')?.addEventListener('change', loadRankBoards);
+      document.getElementById('rank-date-filter')?.addEventListener('change', loadRankBoards);
+      document.getElementById('rank-clear-date')?.addEventListener('click', ()=>{ const d=document.getElementById('rank-date-filter'); if(d){ d.value=''; } loadRankBoards(); });
+      document.getElementById('rank-search')?.addEventListener('input', ()=>{ loadRankBoards(); });
       checkSession();
     });
   </script>
 </body>
 </html>
+
+
+
+
+
 
 
 
